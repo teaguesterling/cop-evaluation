@@ -1,0 +1,16 @@
+IMPORTANT INSTRUCTIONS:
+1. Please provide your COMPLETE response in a single message.
+2. Answer ALL parts of the question thoroughly.
+3. Do not ask for clarification or additional information.
+4. If you're uncertain about any aspect, state your assumptions and proceed with your best interpretation.
+5. Include code implementations where requested, even if they must be simplified.
+
+Please analyze the provided code and identify potential issues:
+
+1. What potential bugs, edge cases, or error conditions are not handled?
+2. Are there any inconsistencies between the documentation and implementation?
+3. What security vulnerabilities might exist in this code?
+4. Where might this code face maintenance or scaling challenges?
+5. Are there any performance concerns?
+
+For each issue you identify, explain why it's a problem and suggest how it could be fixed.

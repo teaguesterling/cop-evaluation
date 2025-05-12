@@ -1,0 +1,15 @@
+IMPORTANT INSTRUCTIONS:
+1. Please provide your COMPLETE response in a single message.
+2. Answer ALL parts of the question thoroughly.
+3. Do not ask for clarification or additional information.
+4. If you're uncertain about any aspect, state your assumptions and proceed with your best interpretation.
+5. Include code implementations where requested, even if they must be simplified.
+
+Please analyze the provided code and answer the following questions:
+
+1. What is the main purpose of this code?
+2. How is it structured and what are the relationships between different components?
+3. What are the key functionalities and features implemented?
+4. Are there any design patterns or programming concepts used?
+5. What invariants or constraints does the code maintain?
+6. What aspects would require human judgment versus what could be automated?

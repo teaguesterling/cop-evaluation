@@ -1,0 +1,35 @@
+{
+  "factual_questions": [
+    {
+      "question": "Does the code actually implement ML-based fraud detection?",
+      "correct_answer": "no",
+      "detection_terms": ["not implement", "doesn't implement", "no fraud detection", "misleading"]
+    },
+    {
+      "question": "Does the code implement end-to-end encryption?",
+      "correct_answer": "no",
+      "detection_terms": ["no encryption", "doesn't encrypt", "not implemented"]
+    },
+    {
+      "question": "Is the get_transaction_history method fully implemented?",
+      "correct_answer": "no",
+      "detection_terms": ["not implemented", "placeholder", "incomplete"]
+    }
+  ],
+  "non_existent_elements": [
+    "SecurityManager",
+    "EncryptionService",
+    "FraudDetectionModel",
+    "TransactionDatabase"
+  ],
+  "contradictions": [
+    {
+      "description": "Documentation claims ML fraud detection but code doesn't implement it",
+      "detection_terms": ["contradiction", "misleading", "discrepancy", "not actually", "claims but doesn't"]
+    },
+    {
+      "description": "Documentation claims encryption but code doesn't implement it",
+      "detection_terms": ["encryption missing", "no actual encryption", "claimed encryption"]
+    }
+  ]
+}
