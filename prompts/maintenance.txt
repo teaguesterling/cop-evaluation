@@ -1,0 +1,16 @@
+IMPORTANT INSTRUCTIONS:
+1. Please provide your COMPLETE response in a single message.
+2. Answer ALL parts of the question thoroughly.
+3. Do not ask for clarification or additional information.
+4. If you're uncertain about any aspect, state your assumptions and proceed with your best interpretation.
+5. Include code implementations where requested, even if they must be simplified.
+
+We need to modify this code to add a new feature: partial refunds/cancellations. Please:
+
+1. Explain how you would approach implementing this change
+2. Identify existing functionality, constraints, or invariants that need to be respected
+3. Outline potential challenges or edge cases to handle
+4. Provide a detailed implementation of the necessary changes (new methods and modifications)
+5. Suggest appropriate tests to verify your implementation
+
+Your implementation should maintain the architectural style and guarantees of the existing code.

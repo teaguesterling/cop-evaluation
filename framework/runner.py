@@ -9,31 +9,33 @@ class TestRunner:
         self.config = config
         self.results_dir = Path(config.RESULTS_DIR)
         self.results_dir.mkdir(exist_ok=True, parents=True)
-        
-    def run_test(self, test_case, variant, prompt_type, model):
+
+    def run_test(self, test_case, variant, prompt_type, model, source_dir="test_cases"):
         """Run a single test with Claude and capture the response"""
-        test_dir = Path(f"test_cases/{test_case}/{variant}")
+        test_dir = Path(f"{source_dir}/{test_case}")
         prompt_file = Path(f"prompts/{prompt_type}.txt")
+
+        variant_file_patterns = [f"{variant}.py", f"{variant}_*.py"]
         
         # Create output directory
-        output_dir = self.results_dir / model / test_case / variant / prompt_type
+        model_short = model.split('-')[1:3]  # Extract model short name
+        model_short = '-'.join(model_short)
+        
+        output_dir = self.results_dir / model_short / test_case / variant / prompt_type
         output_dir.mkdir(exist_ok=True, parents=True)
         
         # Build command to run Claude
-        cmd = [
-            "time", "--format=%e", 
-            "-o", str(output_dir / "time_real.txt"),
-            self.config.CLAUDE_PATH,
-            "--model", model
-        ]
+        cmd = [self.config.CLAUDE_PATH, "--print"]
         
         # Prepare environment
         env = os.environ.copy()
+        env["ANTHROPIC_MODEL"] = model
         
         # Run Claude and capture output
         try:
             # Combine prompt with code
-            combined_prompt = self._prepare_prompt(prompt_file, test_dir)
+  
+            combined_prompt = self._prepare_prompt(prompt_file, test_dir, variant_file_patterns)
             with open(output_dir / "prompt.txt", "w") as f:
                 f.write(combined_prompt)
                 
@@ -74,15 +76,15 @@ class TestRunner:
         except Exception as e:
             print(f"Error running test: {e}")
             return {"success": False, "error": str(e)}
-            
-    def _prepare_prompt(self, prompt_file, test_dir):
+        
+    def _prepare_prompt(self, prompt_file, test_dir, code_patterns=("*.py",)):
         """Combine prompt with code files"""
         # Read the prompt
         with open(prompt_file, "r") as f:
             prompt = f.read()
-            
-        # Find all Python files in the test directory
-        code_files = list(test_dir.glob("*.py"))
+
+        # Find all Python files in the test directoris
+        code_files = list(set(code for pat in code_patterns for code in test_dir.glob(pat)))
         
         # Add code content to prompt
         code_sections = []
@@ -90,6 +92,9 @@ class TestRunner:
             with open(file, "r") as f:
                 code = f.read()
             code_sections.append(f"File: {file.name}\n\n```python\n{code}\n```\n")
+
+        if not code_sections:
+            print(f"WARNING: NO CODE ADDED TO {prompt_file} in {test_dir}")
             
         # Combine everything
         combined = prompt + "\n\n" + "\n\n".join(code_sections)

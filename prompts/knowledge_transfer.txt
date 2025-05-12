@@ -1,0 +1,16 @@
+IMPORTANT INSTRUCTIONS:
+1. Please provide your COMPLETE response in a single message.
+2. Answer ALL parts of the question thoroughly.
+3. Do not ask for clarification or additional information.
+4. If you're uncertain about any aspect, state your assumptions and proceed with your best interpretation.
+5. Include code implementations where requested, even if they must be simplified.
+
+Imagine you're onboarding a new developer to this codebase. Create a comprehensive onboarding document that:
+
+1. Explains the overall architecture and design philosophy
+2. Details the key components and their relationships
+3. Describes the important workflows and business logic
+4. Identifies critical areas that require special attention
+5. Provides guidance on how to extend or modify the system
+
+Your explanation should be clear enough for a mid-level developer to understand the codebase without prior knowledge of the domain. Include relevant code examples where helpful.

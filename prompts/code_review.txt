@@ -1,0 +1,16 @@
+IMPORTANT INSTRUCTIONS:
+1. Please provide your COMPLETE response in a single message.
+2. Answer ALL parts of the question thoroughly.
+3. Do not ask for clarification or additional information.
+4. If you're uncertain about any aspect, state your assumptions and proceed with your best interpretation.
+5. Include code implementations where requested, even if they must be simplified.
+
+Perform a thorough code review of this implementation. Your review should:
+
+1. Assess code quality, readability, and maintainability
+2. Identify potential bugs, edge cases, or reliability issues
+3. Evaluate performance considerations and potential bottlenecks
+4. Check for security vulnerabilities or best practice violations
+5. Suggest specific improvements with code examples
+
+Be constructive in your feedback and prioritize issues by severity. For each issue, explain why it's a problem and how your suggested fix improves the code.

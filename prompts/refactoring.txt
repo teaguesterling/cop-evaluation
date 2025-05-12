@@ -1,0 +1,16 @@
+IMPORTANT INSTRUCTIONS:
+1. Please provide your COMPLETE response in a single message.
+2. Answer ALL parts of the question thoroughly.
+3. Do not ask for clarification or additional information.
+4. If you're uncertain about any aspect, state your assumptions and proceed with your best interpretation.
+5. Include code implementations where requested, even if they must be simplified.
+
+The following code works but needs refactoring to improve maintainability, readability, and adherence to best practices. Please:
+
+1. Identify the design issues, code smells, and architectural problems
+2. Explain how these issues impact maintainability and extensibility
+3. Provide a refactored version that addresses these issues
+4. Explain the principles and patterns you applied in your refactoring
+5. Highlight how your changes improve the code while maintaining functionality
+
+Focus on structural improvements rather than minor stylistic changes. The refactored code should maintain all existing functionality while being more maintainable and extensible.
