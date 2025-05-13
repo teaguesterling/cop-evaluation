@@ -1,0 +1,154 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide your COMPLETE response in a single message - do not leave your analysis unfinished.
+2. Address ALL parts of the question, prioritizing breadth of coverage over exhaustive depth.
+3. Do not ask for clarification or additional information.
+4. If you sense you might run out of time:
+   - Focus first on identifying key differences or patterns in the code
+   - Provide your most important insights about the code's structure and purpose
+   - Ensure you address each part of the question at least briefly
+5. Make explicit references to specific code elements or annotations when they inform your analysis.
+6. State your assumptions clearly if aspects of the code are ambiguous or incomplete.
+
+## TASK: Generate Documentation Based on Code Analysis
+
+You will be given Python code that may or may not contain Concept-Oriented Programming (COP) annotations (@intent, @invariant, @human_decision, @ai_implement) or docstrings. Your task varies based on what the code already contains:
+
+### SCENARIO 1: If the code contains COP annotations but minimal/no docstrings:
+- Generate comprehensive docstrings that capture all the conceptual information from the COP annotations
+- Return the code with both the original COP annotations AND your new docstrings
+
+### SCENARIO 2: If the code contains neither COP annotations nor comprehensive docstrings:
+- Analyze the code to understand its underlying concepts and purpose
+- Generate BOTH COP annotations and comprehensive docstrings
+- Return the code with your new COP annotations and docstrings added
+
+## GUIDELINES:
+
+### For Docstring Generation:
+1. Follow Google-style docstring format
+2. Include summary, extended description, args, returns, and notes sections where appropriate
+3. Clearly communicate:
+   - Purpose/intent of the component
+   - Constraints/invariants that must be maintained
+   - Decision boundaries between human and AI responsibilities
+   - Implementation requirements
+
+### For COP Annotation Generation (when needed):
+1. Add @intent decorators to classes and methods to capture their purpose
+2. Add @invariant decorators to capture constraints that must be maintained
+3. Add @human_decision decorators where human judgment appears necessary
+4. Add @ai_implement decorators where implementation could be handled by AI
+
+## EVALUATION CRITERIA:
+
+Your generated documentation will be evaluated on:
+- Conceptual accuracy: Correctly identifies the core concepts in the code
+- Completeness: All important aspects are documented
+- Clarity: Information is presented in a logical, readable way
+- Consistency: COP annotations and docstrings align conceptually
+- Format: Proper syntax and style for both COP and docstrings
+
+## EXAMPLES:
+
+### SCENARIO 1 EXAMPLE (COP to Docstring):
+
+#### Original code with COP annotations:
+```python
+@intent("Process payments securely while preventing fraud")
+class PaymentProcessor:
+    @intent("Validate payment details before processing")
+    @invariant("Card number must pass Luhn check")
+    def validate_payment(self, payment_details):
+        # Implementation
+```
+
+#### Expected output (COP + docstrings):
+```python
+@intent("Process payments securely while preventing fraud")
+class PaymentProcessor:
+    """Process payments securely while preventing fraud.
+    
+    This class handles payment processing with a focus on security
+    and fraud prevention throughout the transaction lifecycle.
+    """
+    
+    @intent("Validate payment details before processing")
+    @invariant("Card number must pass Luhn check")
+    def validate_payment(self, payment_details):
+        """Validate payment details before processing.
+        
+        Ensures payment information is valid and meets security requirements
+        before any processing occurs.
+        
+        Args:
+            payment_details: The payment information to validate
+            
+        Returns:
+            bool: True if payment details are valid, False otherwise
+            
+        Note:
+            Maintains the invariant that card numbers must pass the Luhn check.
+        """
+        # Implementation
+```
+
+### SCENARIO 2 EXAMPLE (Plain code to COP + Docstring):
+
+#### Original code without COP or docstrings:
+```python
+class PaymentProcessor:
+    def validate_payment(self, payment_details):
+        if not payment_details.card_number or len(payment_details.card_number) < 13:
+            return False
+        if not self._luhn_check(payment_details.card_number):
+            return False
+        if payment_details.expiry < datetime.now():
+            return False
+        return True
+```
+
+#### Expected output (add both COP and docstrings):
+```python
+@intent("Process payments securely and reliably")
+class PaymentProcessor:
+    """Process payments securely and reliably.
+    
+    This class provides functionality to process payment transactions
+    with appropriate validation and security checks.
+    """
+    
+    @intent("Validate payment details before processing")
+    @invariant("Card number must be present and valid")
+    @invariant("Expiration date must be in the future")
+    def validate_payment(self, payment_details):
+        """Validate payment details before processing.
+        
+        Performs multiple validation checks on payment information to ensure
+        it meets the requirements for processing.
+        
+        Args:
+            payment_details: Object containing payment information including 
+                             card number and expiration date
+            
+        Returns:
+            bool: True if payment details are valid, False otherwise
+            
+        Note:
+            Maintains the invariants that card numbers must be present and valid,
+            and that expiration dates must be in the future.
+        """
+        if not payment_details.card_number or len(payment_details.card_number) < 13:
+            return False
+        if not self._luhn_check(payment_details.card_number):
+            return False
+        if payment_details.expiry < datetime.now():
+            return False
+        return True
+```
+
+## FINAL STEP:
+
+After generating the documentation, please provide a brief analysis (2-3 paragraphs) explaining:
+1. Which scenario you identified and followed
+2. How effectively you believe the generated documentation captures the code's concepts
+3. Any challenges you encountered during the generation process

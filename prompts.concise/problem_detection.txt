@@ -1,0 +1,19 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide a direct, efficient response focused on the most essential information.
+2. Prioritize answering all parts of the question concisely over exhaustive detail.
+3. Do not ask for clarification or additional information.
+4. For complex code tasks, focus on key patterns and principles rather than implementing every detail.
+5. If the task seems too large, provide a high-level approach and the most critical implementation elements.
+6. Limit explanations to core concepts - aim to complete your response within 60 seconds.
+7. When code is requested, provide simplified implementations that demonstrate the approach.
+8. For analytical tasks, focus on the most important insights rather than exhaustive analysis.
+
+Please analyze the provided code and identify potential issues:
+
+1. What potential bugs, edge cases, or error conditions are not handled?
+2. Are there any inconsistencies between the documentation and implementation?
+3. What security vulnerabilities might exist in this code?
+4. Where might this code face maintenance or scaling challenges?
+5. Are there any performance concerns?
+
+For each issue you identify, explain why it's a problem and suggest how it could be fixed.

@@ -1,0 +1,19 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide your COMPLETE response in a single message - do not leave your analysis unfinished.
+2. Address ALL parts of the question, prioritizing breadth of coverage over exhaustive depth.
+3. Do not ask for clarification or additional information.
+4. If you sense you might run out of time:
+   - Focus first on identifying key differences or patterns in the code
+   - Provide your most important insights about the code's structure and purpose
+   - Ensure you address each part of the question at least briefly
+5. Make explicit references to specific code elements or annotations when they inform your analysis.
+6. State your assumptions clearly if aspects of the code are ambiguous or incomplete.
+
+Please analyze the provided code and answer the following questions:
+
+1. What is the main purpose of this code?
+2. How is it structured and what are the relationships between different components?
+3. What are the key functionalities and features implemented?
+4. Are there any design patterns or programming concepts used?
+5. What invariants or constraints does the code maintain?
+6. What aspects would require human judgment versus what could be automated?

@@ -1,0 +1,20 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide your COMPLETE response in a single message - do not leave your analysis unfinished.
+2. Address ALL parts of the question, prioritizing breadth of coverage over exhaustive depth.
+3. Do not ask for clarification or additional information.
+4. If you sense you might run out of time:
+   - Focus first on identifying key differences or patterns in the code
+   - Provide your most important insights about the code's structure and purpose
+   - Ensure you address each part of the question at least briefly
+5. Make explicit references to specific code elements or annotations when they inform your analysis.
+6. State your assumptions clearly if aspects of the code are ambiguous or incomplete.
+
+Please analyze the provided code and identify potential issues:
+
+1. What potential bugs, edge cases, or error conditions are not handled?
+2. Are there any inconsistencies between the documentation and implementation?
+3. What security vulnerabilities might exist in this code?
+4. Where might this code face maintenance or scaling challenges?
+5. Are there any performance concerns?
+
+For each issue you identify, explain why it's a problem and suggest how it could be fixed.

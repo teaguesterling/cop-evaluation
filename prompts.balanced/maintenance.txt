@@ -1,0 +1,20 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide your COMPLETE response in a single message - do not leave your analysis unfinished.
+2. Address ALL parts of the question, prioritizing breadth of coverage over exhaustive depth.
+3. Do not ask for clarification or additional information.
+4. If you sense you might run out of time:
+   - Focus first on identifying key differences or patterns in the code
+   - Provide your most important insights about the code's structure and purpose
+   - Ensure you address each part of the question at least briefly
+5. Make explicit references to specific code elements or annotations when they inform your analysis.
+6. State your assumptions clearly if aspects of the code are ambiguous or incomplete.
+
+We need to modify this code to add a new feature: partial refunds/cancellations. Please:
+
+1. Explain how you would approach implementing this change
+2. Identify existing functionality, constraints, or invariants that need to be respected
+3. Outline potential challenges or edge cases to handle
+4. Provide a detailed implementation of the necessary changes (new methods and modifications)
+5. Suggest appropriate tests to verify your implementation
+
+Your implementation should maintain the architectural style and guarantees of the existing code.

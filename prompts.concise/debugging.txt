@@ -1,0 +1,22 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide a direct, efficient response focused on the most essential information.
+2. Prioritize answering all parts of the question concisely over exhaustive detail.
+3. Do not ask for clarification or additional information.
+4. For complex code tasks, focus on key patterns and principles rather than implementing every detail.
+5. If the task seems too large, provide a high-level approach and the most critical implementation elements.
+6. Limit explanations to core concepts - aim to complete your response within 60 seconds.
+7. When code is requested, provide simplified implementations that demonstrate the approach.
+8. For analytical tasks, focus on the most important insights rather than exhaustive analysis.
+
+The following code contains bugs that need to be fixed. A user has reported the following issues:
+- Sometimes valid operations fail unexpectedly
+- There appear to be logical inconsistencies in the business rules
+- Error handling is incomplete or incorrect
+
+Please:
+1. Identify all bugs, issues, and potential problems in the code
+2. Explain the root cause of each issue
+3. Provide fixed code with appropriate comments explaining your changes
+4. Suggest improvements to prevent similar issues in the future
+
+Be thorough in your analysis, as there may be multiple bugs of different types (logical errors, edge cases, etc.).

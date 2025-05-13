@@ -1,0 +1,19 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide a direct, efficient response focused on the most essential information.
+2. Prioritize answering all parts of the question concisely over exhaustive detail.
+3. Do not ask for clarification or additional information.
+4. For complex code tasks, focus on key patterns and principles rather than implementing every detail.
+5. If the task seems too large, provide a high-level approach and the most critical implementation elements.
+6. Limit explanations to core concepts - aim to complete your response within 60 seconds.
+7. When code is requested, provide simplified implementations that demonstrate the approach.
+8. For analytical tasks, focus on the most important insights rather than exhaustive analysis.
+
+Imagine you're onboarding a new developer to this codebase. Create a comprehensive onboarding document that:
+
+1. Explains the overall architecture and design philosophy
+2. Details the key components and their relationships
+3. Describes the important workflows and business logic
+4. Identifies critical areas that require special attention
+5. Provides guidance on how to extend or modify the system
+
+Your explanation should be clear enough for a mid-level developer to understand the codebase without prior knowledge of the domain. Include relevant code examples where helpful.

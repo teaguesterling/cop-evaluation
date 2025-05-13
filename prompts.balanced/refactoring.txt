@@ -1,0 +1,20 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide your COMPLETE response in a single message - do not leave your analysis unfinished.
+2. Address ALL parts of the question, prioritizing breadth of coverage over exhaustive depth.
+3. Do not ask for clarification or additional information.
+4. If you sense you might run out of time:
+   - Focus first on identifying key differences or patterns in the code
+   - Provide your most important insights about the code's structure and purpose
+   - Ensure you address each part of the question at least briefly
+5. Make explicit references to specific code elements or annotations when they inform your analysis.
+6. State your assumptions clearly if aspects of the code are ambiguous or incomplete.
+
+The following code works but needs refactoring to improve maintainability, readability, and adherence to best practices. Please:
+
+1. Identify the design issues, code smells, and architectural problems
+2. Explain how these issues impact maintainability and extensibility
+3. Provide a refactored version that addresses these issues
+4. Explain the principles and patterns you applied in your refactoring
+5. Highlight how your changes improve the code while maintaining functionality
+
+Focus on structural improvements rather than minor stylistic changes. The refactored code should maintain all existing functionality while being more maintainable and extensible.

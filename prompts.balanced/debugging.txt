@@ -1,0 +1,23 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide your COMPLETE response in a single message - do not leave your analysis unfinished.
+2. Address ALL parts of the question, prioritizing breadth of coverage over exhaustive depth.
+3. Do not ask for clarification or additional information.
+4. If you sense you might run out of time:
+   - Focus first on identifying key differences or patterns in the code
+   - Provide your most important insights about the code's structure and purpose
+   - Ensure you address each part of the question at least briefly
+5. Make explicit references to specific code elements or annotations when they inform your analysis.
+6. State your assumptions clearly if aspects of the code are ambiguous or incomplete.
+
+The following code contains bugs that need to be fixed. A user has reported the following issues:
+- Sometimes valid operations fail unexpectedly
+- There appear to be logical inconsistencies in the business rules
+- Error handling is incomplete or incorrect
+
+Please:
+1. Identify all bugs, issues, and potential problems in the code
+2. Explain the root cause of each issue
+3. Provide fixed code with appropriate comments explaining your changes
+4. Suggest improvements to prevent similar issues in the future
+
+Be thorough in your analysis, as there may be multiple bugs of different types (logical errors, edge cases, etc.).

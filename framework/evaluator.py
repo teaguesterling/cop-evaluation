@@ -49,6 +49,8 @@ class TestEvaluator:
     
     def _calculate_basic_metrics(self, response, execution_time):
         """Calculate basic metrics like word count, etc."""
+        if response == "(no content)":
+            response = ""
         words = response.split()
         
         return {

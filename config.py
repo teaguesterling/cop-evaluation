@@ -9,7 +9,6 @@ RESULTS_DIR = "results"
 
 # Default models to test with
 DEFAULT_MODELS = ["claude-3-5-haiku-20241022", "claude-3-7-sonnet-20250219"]
-DEFAULT_MODELS = ["claude-3-5-haiku-20241022"]
 
 # Maps test cases to relevant prompts
 # Format: {test_category/test_case: [list_of_applicable_prompt_names]}

@@ -1,0 +1,19 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide a direct, efficient response focused on the most essential information.
+2. Prioritize answering all parts of the question concisely over exhaustive detail.
+3. Do not ask for clarification or additional information.
+4. For complex code tasks, focus on key patterns and principles rather than implementing every detail.
+5. If the task seems too large, provide a high-level approach and the most critical implementation elements.
+6. Limit explanations to core concepts - aim to complete your response within 60 seconds.
+7. When code is requested, provide simplified implementations that demonstrate the approach.
+8. For analytical tasks, focus on the most important insights rather than exhaustive analysis.
+
+We need to modify this code to add a new feature: partial refunds/cancellations. Please:
+
+1. Explain how you would approach implementing this change
+2. Identify existing functionality, constraints, or invariants that need to be respected
+3. Outline potential challenges or edge cases to handle
+4. Provide a detailed implementation of the necessary changes (new methods and modifications)
+5. Suggest appropriate tests to verify your implementation
+
+Your implementation should maintain the architectural style and guarantees of the existing code.

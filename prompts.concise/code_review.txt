@@ -1,0 +1,19 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide a direct, efficient response focused on the most essential information.
+2. Prioritize answering all parts of the question concisely over exhaustive detail.
+3. Do not ask for clarification or additional information.
+4. For complex code tasks, focus on key patterns and principles rather than implementing every detail.
+5. If the task seems too large, provide a high-level approach and the most critical implementation elements.
+6. Limit explanations to core concepts - aim to complete your response within 60 seconds.
+7. When code is requested, provide simplified implementations that demonstrate the approach.
+8. For analytical tasks, focus on the most important insights rather than exhaustive analysis.
+
+Perform a thorough code review of this implementation. Your review should:
+
+1. Assess code quality, readability, and maintainability
+2. Identify potential bugs, edge cases, or reliability issues
+3. Evaluate performance considerations and potential bottlenecks
+4. Check for security vulnerabilities or best practice violations
+5. Suggest specific improvements with code examples
+
+Be constructive in your feedback and prioritize issues by severity. For each issue, explain why it's a problem and how your suggested fix improves the code.
