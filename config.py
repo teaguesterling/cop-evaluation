@@ -29,4 +29,4 @@ TEST_PROMPT_MAPPING = {
     "hallucination/missing_implementation": ["problem_detection", "feature_implementation"]
 }
 
-
+VARIANTS = ["base", "cop", "docstring", "comments"]

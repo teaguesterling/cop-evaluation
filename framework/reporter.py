@@ -49,45 +49,51 @@ class TestReporter:
             model = model_dir.name
             print(f"Checking model: {model}")
             
-            for test_case_dir in model_dir.glob("*"):
-                if not test_case_dir.is_dir():
+            for test_category_dir in model_dir.glob("*"):
+                if not test_category_dir.is_dir():
                     continue
+
+                test_category = test_category_dir.name
+
+                for test_case_dir in test_category_dir.glob("*"):
+                    if not test_case_dir.is_dir():
+                        continue 
                     
-                test_case = test_case_dir.name
-                print(f"  Checking test case: {test_case}")
-                
-                for variant_dir in test_case_dir.glob("*"):
-                    if not variant_dir.is_dir():
-                        continue
-                        
-                    variant = variant_dir.name
-                    print(f"    Checking variant: {variant}")
+                    test_case = test_case_dir.name
+                    print(f"  Checking test case: {test_case} [{test_category}]")
                     
-                    for prompt_type_dir in variant_dir.glob("*"):
-                        if not prompt_type_dir.is_dir():
+                    for variant_dir in test_case_dir.glob("*"):
+                        if not variant_dir.is_dir():
                             continue
                             
-                        prompt_type = prompt_type_dir.name
-                        metrics_file = prompt_type_dir / "metrics.json"
-                        print(f"      Checking for metrics: {metrics_file}")
+                        variant = variant_dir.name
+                        print(f"    Checking variant: {variant}")
                         
-                        if metrics_file.exists():
-                            print(f"      Found metrics file")
-                            try:
-                                with open(metrics_file, "r") as f:
-                                    metrics = json.load(f)
-                                    
-                                metrics_data.append({
-                                    "model": model,
-                                    "test_case": test_case,
-                                    "variant": variant,
-                                    "prompt_type": prompt_type,
-                                    **metrics
-                                })
-                            except Exception as e:
-                                print(f"      Error reading metrics: {e}")
-                        else:
-                            print(f"      Metrics file not found")
+                        for prompt_type_dir in variant_dir.glob("*"):
+                            if not prompt_type_dir.is_dir():
+                                continue
+                                
+                            prompt_type = prompt_type_dir.name
+                            metrics_file = prompt_type_dir / "metrics.json"
+                            print(f"      Checking for metrics: {metrics_file}")
+                            
+                            if metrics_file.exists():
+                                print(f"      Found metrics file")
+                                try:
+                                    with open(metrics_file, "r") as f:
+                                        metrics = json.load(f)
+                                        
+                                    metrics_data.append({
+                                        "model": model,
+                                        "test_case": test_case,
+                                        "variant": variant,
+                                        "prompt_type": prompt_type,
+                                        **metrics
+                                    })
+                                except Exception as e:
+                                    print(f"      Error reading metrics: {e}")
+                            else:
+                                print(f"      Metrics file not found")
         
         print(f"Collected {len(metrics_data)} metrics records")
         return metrics_data
@@ -219,7 +225,11 @@ class TestReporter:
             ).mean(),
             "avg_execution_time_diff_pct": df.groupby(["model", "test_case", "prompt_type"]).apply(
                 lambda g: (g[g["variant"] == "cop"]["execution_time"].values[0] - g[g["variant"] == "base"]["execution_time"].values[0]) / g[g["variant"] == "base"]["execution_time"].values[0] * 100 
-                if len(g[g["variant"] == "cop"]) > 0 and len(g[g["variant"] == "base"]) > 0 and g[g["variant"] == "base"]["execution_time"].values[0] > 0 
+                if (len(g[g["variant"] == "cop"]) > 0 and 
+                    len(g[g["variant"] == "base"]) > 0 and 
+                    g[g["variant"] == "base"]["execution_time"].values[0] is not None and
+                    g[g["variant"] == "cop"]["execution_time"].values[0] is not None and
+                    g[g["variant"] == "base"]["execution_time"].values[0] > 0)
                 else float('nan')
             ).mean()
         }

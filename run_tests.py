@@ -16,26 +16,25 @@ def load_config(config_path="config.py"):
     spec.loader.exec_module(config)
     return config
 
-def discover_tests():
+def discover_tests(variants):
     """Discover all available test cases"""
     tests = []
     test_dir = Path("test_cases")
     
     # Look at all subdirectories
-    for path in Path("test_cases").glob("**/*"):
+    for path in Path("test_cases").glob("*/*"):
         if not path.is_dir():
             continue
             
-        for varaint_file in path.glob("*.py"):
-            rel_path = path.relative_to(test_dir)
-            tests.append(rel_path)
+        case_files = [variant.relative_to(test_dir) for variant in path.glob("*.py")]
         
         # Check if this directory contains both base.py and cop.py
-        if all(crit in [t.stem for t in tests] for crit in ["base", "cop"]):
+        if all(crit in [t.stem for t in case_files] for crit in ["base", "cop"]):
             # Get relative path from test_cases directory
-            print(f"Found test: {rel_path}")
+            tests.append(path.relative_to(test_dir))
     
-    return [test.as_posix() for test in tests]
+    test_list = list(set([test.as_posix() for test in tests]))
+    return test_list
 
 
 def discover_prompts():
@@ -75,7 +74,9 @@ def get_applicable_prompts(config, test_path):
 
 def run_all_tests(config, models, force_rerun=False):
     """Run all tests for specified models, skipping those already run unless forced"""
-    all_tests = discover_tests()
+    all_variants = getattr(config, "VARIANTS", ["base", "cop"])
+
+    all_tests = discover_tests(all_variants)
     all_prompts = discover_prompts()
     
     if not all_tests:
@@ -86,7 +87,8 @@ def run_all_tests(config, models, force_rerun=False):
         print("No prompts found!")
         return
         
-    print(f"Found {len(all_tests)} tests and {len(all_prompts)} prompt types")
+    print(f"Found {len(all_tests)} tests with {len(all_variants)} variants and {len(all_prompts)} prompt types)")
+    print(f"Running on {len(models)} model(s)")
     
     runner = TestRunner(config)
     evaluator = TestEvaluator(config)
@@ -100,9 +102,10 @@ def run_all_tests(config, models, force_rerun=False):
     
     # Run all combinations of tests
     for model in models:
-        print(f"    For model: {model}")
-        for test in all_tests:
-            print(f"Running test: {test}")
+        print(f"    For model: {model} (max: {len(all_tests) * len(all_prompts) * len(all_variants)} total tests)")
+        model_test_num = 0
+        for test_num, test in enumerate(all_tests, start=1):
+            print(f"Running test {test_num} of {len(all_tests)}: {test}")
             applicable_prompts = get_applicable_prompts(config, test)
             if applicable_prompts is None:
                 applicable_prompts = all_prompts
@@ -114,11 +117,12 @@ def run_all_tests(config, models, force_rerun=False):
                 model_short = '-'.join(model_short)
                 
                 # For each variant (base, cop, docstring, comments)
-                for variant in ["base", "cop", "comments", "docstring"]:
+                for variant in all_variants:
                     # Check if test result already exists
                     result_dir = Path(f"{config.RESULTS_DIR}/{model_short}/{test}/{variant}/{prompt}")
                     response_file = result_dir / "response.txt"
                     
+                    model_test_num += 1
                     if response_file.exists() and not force_rerun:
                         print(f"      Skipping {variant} (already run)")
                         stats["skipped"] += 1
@@ -138,9 +142,9 @@ def run_all_tests(config, models, force_rerun=False):
                         
                         continue
                     
-                    print(f"      Running {variant}")
+                    print(f"      Running #{model_test_num}: {variant}")
                     # Run the test
-                    result = runner.run_test(test, variant, prompt, model)
+                    result = runner.run_test(test, variant, prompt, model, source_dir="test_cases")
                     
                     if result["success"]:
                         stats["run"] += 1
@@ -157,56 +161,6 @@ def run_all_tests(config, models, force_rerun=False):
                         stats["failed"] += 1
                         print(f"      Error running test: {result.get('error', 'Unknown error')}")
                 
-                # Check for and run docstring and comments variants if they exist
-                for variant in ["docstring", "comments"]:
-                    source_dir = f"test_cases_{variant}"
-                    variant_file = Path(f"{source_dir}/{test}/cop.py")
-                    
-                    if not variant_file.exists():
-                        continue
-                        
-                    # Check if test result already exists
-                    result_dir = Path(f"{config.RESULTS_DIR}/{model_short}/{test}/{variant}/{prompt}")
-                    response_file = result_dir / "response.txt"
-                    
-                    if response_file.exists() and not force_rerun:
-                        print(f"      Skipping {variant} (already run)")
-                        stats["skipped"] += 1
-                        
-                        # Make sure metrics are evaluated even for skipped tests
-                        if (result_dir / "metrics.json").exists():
-                            continue
-                            
-                        # Find ground truth file if available
-                        category, test_case = test.split("/", 1)
-                        ground_truth_file = Path(f"ground_truth/{category}/{test_case}.json")
-                        
-                        if ground_truth_file.exists():
-                            evaluator.evaluate_test(result_dir, ground_truth_file)
-                        else:
-                            evaluator.evaluate_test(result_dir)
-                        
-                        continue
-                    
-                    print(f"      Running {variant}")
-                    # Run the test
-                    result = runner.run_test(test, variant, prompt, model, source_dir=source_dir)
-                    
-                    if result["success"]:
-                        stats["run"] += 1
-                        
-                        # Find ground truth file if available
-                        category, test_case = test.split("/", 1)
-                        ground_truth_file = Path(f"ground_truth/{category}/{test_case}.json")
-                        
-                        if ground_truth_file.exists():
-                            evaluator.evaluate_test(result["output_dir"], ground_truth_file)
-                        else:
-                            evaluator.evaluate_test(result["output_dir"])
-                    else:
-                        stats["failed"] += 1
-                        print(f"      Error running test: {result.get('error', 'Unknown error')}")
-    
     # Generate reports
     reporter = TestReporter(config)
     reporter.generate_reports()
@@ -221,18 +175,18 @@ def run_all_tests(config, models, force_rerun=False):
 def main():
     parser = argparse.ArgumentParser(description="Run COP tests")
     parser.add_argument("--config", default="config.py", help="Path to config file")
-    parser.add_argument("--models", nargs="+", 
-                        default=["claude-3-5-haiku-20241022", "claude-3-7-sonnet-20250219"], 
-                        help="Models to test with")
+    parser.add_argument("--models", nargs="*", default=None, help="Models to test with")
     parser.add_argument("--force", default=False, action="store_true", help="Rurun all tests")
     
     args = parser.parse_args()
     
     # Load configuration
     config = load_config(args.config)
+
+    models = getattr(config, "DEFAULT_MODELS", ["default"]) if args.models is None else args.models
     
     # Run tests
-    run_all_tests(config, args.models, force_rerun=args.force)
+    run_all_tests(config, models, force_rerun=args.force)
 
 if __name__ == "__main__":
     main()

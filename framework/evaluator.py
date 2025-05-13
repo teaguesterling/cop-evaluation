@@ -14,12 +14,11 @@ class TestEvaluator:
         with open(output_dir / "response.txt", "r") as f:
             response = f.read()
             
-        # Load timing info
-        try:
-            with open(output_dir / "time_real.txt", "r") as f:
-                execution_time = float(f.read().strip())
-        except:
-            execution_time = None
+        with open(output_dir / "metadata.json", "r") as f:
+            metadata = json.load(f)
+            
+        execution_time = metadata["execution_time"]
+        
             
         # Calculate basic metrics
         basic_metrics = self._calculate_basic_metrics(response, execution_time)
@@ -36,6 +35,7 @@ class TestEvaluator:
         
         # Combine all metrics
         metrics = {
+            "exit_code": metadata["exit_code"],
             **basic_metrics,
             **hallucination_metrics,
             **annotation_metrics

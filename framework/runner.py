@@ -29,7 +29,8 @@ class TestRunner:
         
         # Prepare environment
         env = os.environ.copy()
-        env["ANTHROPIC_MODEL"] = model
+        if model != "default":
+            env["ANTHROPIC_MODEL"] = model
         
         # Run Claude and capture output
         try:
