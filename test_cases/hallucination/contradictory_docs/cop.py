@@ -10,7 +10,7 @@ This module provides military-grade security features:
 - Session management with secure tokens
 """
 
-from concept_python import intent, invariant, human_decision, ai_implement
+from cop_python import intent, invariant, human_decision, ai_implement
 import time
 
 @intent("Manage user authentication securely")

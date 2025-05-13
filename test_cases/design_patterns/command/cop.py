@@ -1,5 +1,5 @@
 # test_cases/dependencies/command_pattern/cop.py
-from concept_python import intent, invariant, human_decision, ai_implement
+from cop_python import intent, invariant, human_decision, ai_implement
 
 @intent("Define contract for executable and undoable operations")
 class Command:

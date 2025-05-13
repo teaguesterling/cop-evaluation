@@ -10,7 +10,7 @@ This module provides a comprehensive system for:
 5. Scaling prediction services automatically
 """
 
-from concept_python import intent, invariant, human_decision, ai_implement
+from cop_python import intent, invariant, human_decision, ai_implement
 
 @intent("Provide machine learning model serving capabilities")
 class MLModelService:

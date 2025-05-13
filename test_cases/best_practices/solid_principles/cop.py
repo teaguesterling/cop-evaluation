@@ -1,5 +1,5 @@
 # test_cases/best_practices/solid_principles/cop.py
-from concept_python import intent, invariant, human_decision, ai_implement
+from cop_python import intent, invariant, human_decision, ai_implement
 
 # E-commerce system with SOLID principles applied and COP annotations
 

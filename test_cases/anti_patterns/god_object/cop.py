@@ -1,5 +1,5 @@
 # test_cases/anti_patterns/god_object/cop.py
-from concept_python import intent, invariant, human_decision, ai_implement
+from cop_python import intent, invariant, human_decision, ai_implement
 
 @intent("Manage all e-commerce operations including users, products, orders, and payments")
 class SuperController:

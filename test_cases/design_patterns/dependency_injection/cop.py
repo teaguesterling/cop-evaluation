@@ -1,5 +1,5 @@
 # test_cases/dependencies/dependency_injection/cop.py
-from concept_python import intent, invariant, human_decision, ai_implement
+from cop_python import intent, invariant, human_decision, ai_implement
 
 @intent("Manage database connections and query execution")
 class Database:

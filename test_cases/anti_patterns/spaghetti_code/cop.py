@@ -1,5 +1,5 @@
 # test_cases/anti_patterns/spaghetti_code/cop.py
-from concept_python import intent, invariant, human_decision, ai_implement
+from cop_python import intent, invariant, human_decision, ai_implement
 
 @intent("Process data in various modes with flexible input formats")
 @invariant("Function must always return a dictionary with results")

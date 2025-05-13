@@ -1,5 +1,5 @@
 # test_cases/dependencies/service_locator/cop.py
-from concept_python import intent, invariant, human_decision, ai_implement
+from cop_python import intent, invariant, human_decision, ai_implement
 
 class ServiceNotFoundError(Exception):
     pass

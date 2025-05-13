@@ -10,7 +10,7 @@ This module implements a secure payment processing system with:
 - Comprehensive logging and audit trails
 """
 
-from concept_python import intent, invariant, human_decision, ai_implement
+from cop_python import intent, invariant, human_decision, ai_implement
 
 @intent("Process payments securely and reliably")
 class PaymentProcessor:
