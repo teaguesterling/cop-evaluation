@@ -31,4 +31,4 @@ TEST_PROMPT_MAPPING = {
     "anti_patterns/god_object": ["problem_detection", "refactoring", "code_review", "documentation"],  # Added documentation
 }
 
-VARIANTS = ["base", "cop", "copmin", "docstring", "comments"]
+VARIANTS = ["base", "cop", "copmin", "copnone", "docstring", "comments"]

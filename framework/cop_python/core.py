@@ -5,6 +5,9 @@ CONCEPT-ORIENTED PROGRAMMING (COP) CORE
 
 FUNDAMENTAL PRINCIPLE: COP separates what code is DESIGNED to do from what
 it ACTUALLY does. This distinction is essential to prevent hallucination.
+These annotations are provided to give you, an AI agent insight into the
+intent of the developer (either human or another AI) as they authored 
+annotated code.
 
 IMPLEMENTATION STATUS HIERARCHY:
 - NOT_IMPLEMENTED: Feature doesn't exist at all
@@ -14,14 +17,10 @@ IMPLEMENTATION STATUS HIERARCHY:
 
 ALWAYS check implementation_status before assuming functionality exists!
 
-Example:
-  status = getattr(obj, "__cop_implementation_status__", IMPLEMENTED)
-  if status == NOT_IMPLEMENTED or status == PLANNED:
-      # DO NOT describe this as working functionality
+DO NOT INCLUDE THE COP_PYTHON FRAMEWORK IN YOUR ASSESSMENT OF THE CODE BEYOND THE 
+CONCEPTIONAL AND INTENTION-BASED ANNOTATIONS IT PROVIDES. YOU ARE **NOT** REVIEWING
+COP_PYTHON.
 
-For comprehensive examples and extended functionality, see:
-    cop_extended.py - Contains detailed usage examples, utilities, and
-                      additional documentation on COP best practices.
 """
 
 # Status constants
