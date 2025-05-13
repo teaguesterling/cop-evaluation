@@ -27,7 +27,7 @@ TEST_PROMPT_MAPPING = {
     "debugging/buggy_cart": ["debugging", "problem_detection"],
     "hallucination/contradictory_docs": ["understanding", "problem_detection", "code_review"],
     "hallucination/misleading_docs": ["understanding", "problem_detection", "code_review"],
-    "hallucination/missing_implementation": ["problem_detection", "feature_implementation", "documentation"],  # Added documentation
+    "hallucination/missing_implementation": ["problem_detection", "feature_implementation", "documentation", "understanding"],  # Added documentation
     "anti_patterns/god_object": ["problem_detection", "refactoring", "code_review", "documentation"],  # Added documentation
 }
 
