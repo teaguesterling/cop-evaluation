@@ -4,3 +4,7 @@ __pycache__
 *.sw[opq]
 /summaries/
 /variant-results/
+/assessments/
+/summary/
+
+**/CLAUDE.local.md

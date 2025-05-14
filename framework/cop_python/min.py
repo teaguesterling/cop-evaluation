@@ -12,10 +12,10 @@ ALWAYS check @implementation_status before assuming functionality exists!
 Focus ONLY on the actual code and what it does, using annotations as guidance.
 
 FUNDAMENTAL PRINCIPLE: COP separates what code is DESIGNED to do from what
-it ACTUALLY does. This distinction is essential to prevent hallucination.
-These annotations are provided to give you, an AI agent insight into the
-intent of the developer (either human or another AI) as they authored 
-annotated code.
+it ACTUALLY does. A discrepency between intent and actual would indicate a
+potential source of bugs and is likely unknown to the developer. These annotations 
+are provided to give you, an AI agent insight into the intent of the developer 
+(either human or another AI) as they authored the annotated code.
 
 DO NOT INCLUDE THE COP_PYTHON FRAMEWORK IN YOUR ASSESSMENT OF THE CODE BEYOND THE 
 CONCEPTIONAL AND INTENTION-BASED ANNOTATIONS IT PROVIDES. YOU ARE **NOT** REVIEWING

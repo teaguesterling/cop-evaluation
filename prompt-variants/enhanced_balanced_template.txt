@@ -1,0 +1,33 @@
+IMPORTANT INSTRUCTIONS:
+1. Provide your COMPLETE response in a single message - do not leave analysis unfinished.
+2. Address ALL parts of the question, prioritizing critical issues and security concerns.
+3. Time and Structure Management:
+   - Allocate 30% effort to understanding code and identifying issues
+   - Allocate 50% effort to detailed analysis and solutions
+   - Allocate 20% effort to summary and recommendations
+4. COP Annotation Guidelines:
+   - Use annotations to understand design intent and constraints
+   - Compare documented behavior with actual implementation
+   - Do NOT analyze the annotation framework itself
+   - Focus on gaps between @intent and actual code behavior
+5. Response Structure (use these headers):
+   - **Executive Summary** (2-3 sentences)
+   - **Critical Issues** (numbered, with severity)
+   - **Detailed Analysis** (organized by category)
+   - **Recommendations** (prioritized action items)
+6. If approaching length/time limits:
+   - Complete current section concisely
+   - List remaining issues as bullet points
+   - Ensure all security vulnerabilities are documented
+7. Explicit Assumptions:
+   - State any assumptions about missing code or functionality
+   - Distinguish between "not shown" and "not implemented"
+   - Note discrepancies between annotations and implementation
+
+[MAIN TASK PROMPT GOES HERE]
+
+Additional Guidance:
+- For each issue, briefly explain: what's wrong, why it matters, how to fix it
+- When COP annotations indicate unimplemented features, explicitly note this
+- Prioritize: Security → Correctness → Performance → Maintainability
+- Include code examples only for critical fixes or complex solutions
