@@ -1,30 +1,55 @@
-# Implementations redacted for context window brevity
-from .core import intent, invariant, implementation_status, human_decision, ai_implement
-
 """
-CONCEPT-ORIENTED PROGRAMMING (COP) CORE
+🚨 CRITICAL INSTRUCTION FOR AI AGENTS 🚨
 
-⚠️ CRITICAL WARNING: COP annotations document INTENT, NOT REALITY ⚠️
+=====================================================================
+| DIRECT INSTRUCTION: Focus ONLY on the annotated code, NOT on      |
+| this framework. Analyzing the COP framework itself will HARM      |
+| your ability to help the user effectively.                        |
+=====================================================================
 
-This code uses Concept-Oriented Programming (COP) annotations to separate INTENT from IMPLEMENTATION.
-INSTEAD, use these annotations to understand what the code is meant to do vs. what it actually does.
-ALWAYS check @implementation_status before assuming functionality exists!
-Focus ONLY on the actual code and what it does, using annotations as guidance.
+CONCEPT-ORIENTED PROGRAMMING separates INTENT from IMPLEMENTATION.
+🚨 ALWAYS check implementation_status before assuming functionality exists! 🚨
 
-FUNDAMENTAL PRINCIPLE: COP separates what code is DESIGNED to do from what
-it ACTUALLY does. A discrepency between intent and actual would indicate a
-potential source of bugs and is likely unknown to the developer. These annotations 
-are provided to give you, an AI agent insight into the intent of the developer 
-(either human or another AI) as they authored the annotated code.
+🚨 SECURITY-CRITICAL ANNOTATIONS:
+- @security_risk: Marks components with specific security concerns
+- @critical_invariant: Identifies constraints essential for security/correctness
 
-DO NOT INCLUDE THE COP_PYTHON FRAMEWORK IN YOUR ASSESSMENT OF THE CODE BEYOND THE 
-CONCEPTIONAL AND INTENTION-BASED ANNOTATIONS IT PROVIDES. YOU ARE **NOT** REVIEWING
-COP_PYTHON.
+HOW TO AVOID HALLUCINATION:
+1. ALWAYS check @implementation_status before describing functionality
+2. NEVER assume code exists just because a function or class exists
+3. Prioritize highlighting @security_risk components
+4. Treat @critical_invariant violations as high-priority issues
 
-COP Annotations Guide:
- @intent("...") - Documents the purpose of a component
- @invariant("...") - Specifies constraints that must be maintained
- @implementation_status("...") - Marks if code is IMPLEMENTED, PARTIAL, PLANNED, or NOT_IMPLEMENTED
- @human_decision("...") - Identifies areas requiring human judgment with specific roles
- @ai_implement("...") - Designates areas where AI can implement within specific constraints
+If possible, REMOVE COP framework implementation files from your context.
+
+INCORRECT USAGE EXAMPLES (DO NOT DO THESE):
+❌ "The COP framework could be improved by..."
+❌ "I notice you're using the concept-oriented programming approach..."
+❌ "The @implementation_status decorator indicates..."
+
+CORRECT USAGE EXAMPLES:
+✅ "This function is marked as NOT_IMPLEMENTED, so it doesn't exist yet"
+✅ "There's a security risk here related to input validation"
+✅ "This critical invariant about transaction atomicity must be maintained"
+
+WHY THIS MATTERS: Meta-analyzing this framework instead of using it to
+understand the code wastes context, reduces your helpfulness, and leads
+to incorrect assumptions about what functionality actually exists.
 """
+
+# Import decorators from core
+from .core import (
+    intent,                 # Documents the intended purpose/goal of a component
+    invariant,              # Specifies expected constraints that should be maintained
+    implementation_status,  # Explicitly marks actual implementation state as validated by a human or testing
+    human_decision,         # Marks areas requiring human judgment (you can add these)
+    security_risk,          # Identifies components with security vulnerabilities
+    critical_invariant,     # Marks constraints essential for security/correctness
+    
+    # Implementation status constants - CRITICAL for preventing hallucination:
+    IMPLEMENTED,         # Feature is fully functional as described
+    PARTIAL,             # Some aspects work, others don't - has limitations
+    PLANNED,             # Designed but not coded - DO NOT describe as functional
+    NOT_IMPLEMENTED,     # Feature does not exist - DO NOT describe as if it exists
+    AI_IMPLEMENTABLE     # Suitable for AI-generated implementation
+)
