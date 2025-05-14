@@ -1,0 +1,6 @@
+Please review one prompt (*.txt) in the assessments/v0.2-balanced-base-docstring directory for 
+context. These are prompts sent to an AI agent like yourself to assess their ability to do specific 
+code review tasks given different kinds of comments and annotations. Please then review all response
+files "assessments/v0.2-balanced-base-docstring/*.response.md" and provide a detailed comparitive 
+assessment of the two methods including a summary of your findings and any recommendations for 
+improving either the methods or the testing methodology.
