@@ -40,19 +40,18 @@ to incorrect assumptions about what functionality actually exists.
 
 # Import decorators from core
 from .core import (
-    intent,                 # Documents the intended purpose/goal of a component
-    invariant,              # Specifies expected constraints that should be maintained
     implementation_status,  # Explicitly marks actual implementation state
-    human_decision,         # Marks areas requiring human judgment
-    security_risk,          # Identifies components with security vulnerabilities
-    critical_invariant,     # Marks constraints essential for security/correctness
+    risk,                   # Identifies components with security vulnerabilities
+    invariant,              # Specifies expected constraints that should be maintained
+    intent,                 # Documents the intended purpose/goal of a component
+    decision,               # Marks areas requiring explicit decision points
     
     # Implementation status constants - CRITICAL for preventing hallucination:
     IMPLEMENTED,         # Feature is fully functional - can be described without caveats
     PARTIAL,             # Some aspects work, others don't - ALWAYS mention limitations
+    BUGGY,               # Feature was working but now broken - HIGHLIGHT specific failures
     PLANNED,             # Designed but not coded - NEVER describe behavior, only intent
     NOT_IMPLEMENTED,     # Feature does not exist - NEVER describe behavior, only intent
-    AUTOMATION_READY,    # Suitable for AI-generated implementation - describe as incomplete
-    REQUIRES_JUDGMENT,   # Must be implemented by humans - DO NOT suggest implementation
+    UNKNOWN,             # Status not yet evaluated - DO NOT make assumptions, recommend review first
     DEPRECATED           # Feature exists but should no longer be used - suggest alternatives
 )
