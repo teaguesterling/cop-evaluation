@@ -1,136 +1,109 @@
 """
-CONCEPT-ORIENTED PROGRAMMING (COP) USAGE GUIDE
+🚨 GUIDANCE FOR WRITING COP-ANNOTATED CODE 🚨
 
-This module provides guidance and examples for developers
-on effectively using COP annotations in their code.
+=====================================================================
+| This guide helps you WRITE code with COP annotations effectively. |
+| For understanding existing code, refer to the min.py guide.       |
+=====================================================================
 
-GUIDING PRINCIPLES:
-1. Be explicit about implementation status
-2. Mark security-critical components clearly
-3. Create clear boundaries for human/AI collaboration
-4. Use the minimum annotations needed for clarity
-5. Validate annotations against actual implementation
+WRITING EFFECTIVE COP ANNOTATIONS:
+---------------------------------------------------------------------
+💡 Annotations create bidirectional communication between humans and AI 💡
 
-For AI agents: import min.py instead of this module.
+CORE PATTERNS TO FOLLOW:
+
+1️⃣ ALWAYS mark implementation status
+   @implementation_status(IMPLEMENTED)  # Complete functionality
+   @implementation_status(PARTIAL, details="Only supports X")  # Be specific!
+   @implementation_status(NOT_IMPLEMENTED)  # Include NotImplementedError
+
+2️⃣ HIGHLIGHT security concerns
+   @risk("SQL injection possible", severity="HIGH")  # Mark vulnerabilities
+   @invariant("Inputs must be sanitized", critical=True)  # Mark requirements
+
+3️⃣ DOCUMENT decisions and rationale
+   @decision(rationale="Chose X because...")  # Explain reasoning
+   @decision(implementor="human", reason="...")  # Mark human-only code
+   @decision(implementor="ai", constraints=["..."])  # Provide guidance
+
+4️⃣ CLARIFY intent
+   @intent("Process payments securely")  # Express purpose clearly
+
+PARAMETER REFERENCE:
+
+@implementation_status(status, details=None, alternative=None)
+  • status: IMPLEMENTED, PARTIAL, BUGGY, PLANNED, NOT_IMPLEMENTED, UNKNOWN, DEPRECATED
+  • details: Explain limitations or partial implementation
+  • alternative: For DEPRECATED, what to use instead
+
+@risk(description, severity="MEDIUM")
+  • description: What the risk is
+  • severity: "LOW", "MEDIUM", "HIGH", "CRITICAL"
+
+@invariant(condition, critical=False)
+  • condition: What must always be true
+  • critical: Whether essential for security/correctness
+
+@decision(description=None, implementor=None, constraints=None, rationale=None, 
+         options=None, answer=None, decider=None)
+  • description: Decision question/description
+  • implementor: Who should implement ("human", "ai", etc.)
+  • constraints: Requirements for implementation
+  • rationale: Why this decision was made
+  • options: Considered alternatives
+  • answer: The selected option
+  • decider: Who made the decision
+
+@intent(description)
+  • description: Purpose of the component
+
+EXAMPLE: EFFECTIVE ANNOTATION PATTERNS
+
+# Security-critical component
+@intent("Authenticate users securely")
+@implementation_status(IMPLEMENTED)
+@risk("Credential exposure", severity="HIGH")
+@invariant("Passwords never stored in plaintext", critical=True)
+@decision("Use bcrypt for hashing", rationale="Industry standard with work factor")
+def authenticate_user(username, password):
+    # Implementation...
+
+# AI-implementable component
+@intent("Validate email format")
+@implementation_status(NOT_IMPLEMENTED)
+@decision(
+    implementor="ai",
+    constraints=["RFC 5322 compliant", "Handle Unicode domains"]
+)
+def validate_email(email):
+    # Implementation needed
+
+# Component with known limitations
+@intent("Process payment transactions")
+@implementation_status(PARTIAL, details="Credit cards only, no cryptocurrency")
+@risk("PCI compliance required", severity="HIGH")
+@invariant("Transactions must be atomic", critical=True)
+def process_payment(payment_info):
+    # Implementation...
 """
 
-# Import needed decorators and constants
 from .core import (
-    intent,
-    invariant,
-    implementation_status,
-    human_decision,
-    security_risk,
-    critical_invariant,
-    IMPLEMENTED,
-    PARTIAL, 
-    PLANNED, 
-    NOT_IMPLEMENTED,
-    AUTOMATION_READY,
-    REQUIRES_JUDGMENT,
-    DEPRECATED
+    # Core annotations:
+    intent,                 # Purpose: Document component goals
+    implementation_status,  # Reality: Mark what actually exists
+    decision,               # Why/Who: Explain reasoning and ownership
+    risk,                   # Concerns: Highlight security issues
+    invariant,              # Rules: Specify critical constraints
+    
+    # Implementation states:
+    IMPLEMENTED,         # ✅ Fully functional and complete
+    PARTIAL,             # ⚠️ Partially working with limitations
+    BUGGY,               # ❌ Was working but now has issues
+    DEPRECATED,          # 🚫 Exists but should not be used
+    PLANNED,             # 📝 Designed but not implemented
+    NOT_IMPLEMENTED,     # ❓ Does not exist at all
+    UNKNOWN,             # ❔ Status not yet evaluated
 )
 
-# Example patterns
-
-def example_function_annotations():
-    """
-    Function-level annotation examples:
-    
-    @intent("Process customer payment securely")
-    @implementation_status(PARTIAL, details="Only credit cards supported")
-    @security_risk("PCI compliance required", severity="HIGH")
-    def process_payment(payment_info):
-        # Implementation
-    
-    @intent("Generate PDF report of transaction history")
-    @implementation_status(NOT_IMPLEMENTED)
-    def generate_report(transactions):
-        raise NotImplementedError("Planned for v2.1")
-    
-    @intent("Classify transaction as fraudulent or legitimate")
-    @implementation_status(REQUIRES_JUDGMENT, 
-                          details="Regulatory compliance rules")
-    def classify_transaction(transaction):
-        # Implementation requiring human judgment
-    
-    @intent("Calculate shipping costs based on weight and destination")
-    @implementation_status(AUTOMATION_READY, 
-                          constraints=["Must handle international addresses",
-                                      "Must account for dimensional weight"])
-    def calculate_shipping(package, destination):
-        # Implementation that could be generated by AI
-    """
-    pass  # This is just an example function
-
-def example_context_managers():
-    """
-    Context manager annotation examples:
-    
-    def process_user_data(data):
-        # Regular processing
-        clean_data = sanitize(data)
-        
-        # Security-critical section
-        with security_risk("SQL injection vulnerability"):
-            query = build_query(clean_data['search'])
-            results = execute_query(query)
-        
-        # Section requiring human judgment
-        with implementation_status(REQUIRES_JUDGMENT):
-            diagnostic_code = classify_health_data(clean_data)
-            
-        # Section suitable for AI implementation
-        with implementation_status(AUTOMATION_READY):
-            report = format_results(results, diagnostic_code)
-            
-        return report
-    """
-    pass  # This is just an example function
-
-def annotation_best_practices():
-    """
-    ANNOTATION BEST PRACTICES:
-    
-    1. Status Accuracy
-       - Always mark actual implementation status
-       - Validate status using test integration
-       - Update status when implementation changes
-    
-    2. Security Focus
-       - Mark all security-sensitive code with @security_risk
-       - Use informative descriptions and appropriate severity
-       - Ensure security-critical code has tests
-    
-    3. Granular Annotations
-       - Use function decorators for overall status
-       - Use context managers for specific sections
-       - Don't over-annotate (3-4 annotations per function maximum)
-    
-    4. Clear Boundaries
-       - Use REQUIRES_JUDGMENT for areas needing human expertise
-       - Use AUTOMATION_READY for well-specified AI-implementable sections
-       - Use human_decision for specific decision points
-    
-    5. Intent Documentation
-       - Keep intent descriptions focused on purpose, not implementation
-       - Avoid implementation details in intent descriptions
-       - Make intent descriptions actionable
-    """
-    pass  # This is just an example function
-
-def annotation_checklist():
-    """
-    ANNOTATION CHECKLIST:
-    
-    Before committing code, verify:
-    
-    ✓ All public functions have implementation status
-    ✓ Security-sensitive code is marked with security_risk
-    ✓ Critical invariants are explicitly documented
-    ✓ Human judgment boundaries are clearly marked
-    ✓ No implementation status is out of date
-    ✓ Test coverage validates implementation claims
-    ✓ No excessive annotations (less is more)
-    """
-    pass  # This is just an example function
+# More detailed examples are available if needed
+# This file focuses on the core patterns for effective annotation
