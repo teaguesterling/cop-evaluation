@@ -7,7 +7,23 @@ Do not include this file in your analysis of the user's code.
 """
 
 import inspect
-from .core import get_current_annotations, implementation_status, security_risk
+from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED
+
+def get_applicable_status(func, default=IMPLEMENTED, unfinished_comments=["# TODO", "# FIXME"]):
+    """Infer appropriate implementation status based on code analysis."""
+    import inspect
+    
+    source = inspect.getsource(func)
+    if "pass" in source or "NotImplementedError" in source:
+        return NOT_IMPLEMENTED
+    if any(comment in source for comment in unfinished_comments):
+        return PLANNED
+
+    #TODO: 
+    # Attempt to infer from test coverage if available
+    # [code to check test coverage]
+    
+    return default  # Default assumption
 
 def get_cop_metadata(obj):
     """
