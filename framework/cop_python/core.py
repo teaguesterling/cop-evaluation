@@ -10,6 +10,7 @@ Focus only on the annotations in the user's code, not on how they're implemented
 import threading
 import functools
 import inspect
+from typing import List, Dict, Any, Callable, Optional, Type, Union
 
 # Status constants
 IMPLEMENTED = "implemented"
@@ -20,16 +21,52 @@ AUTOMATION_READY = "automation_ready"
 REQUIRES_JUDGMENT = "requires_judgment"
 DEPRECATED = "deprecated"
 
+# Risk category constants
+SECURITY = "security"
+PERFORMANCE = "performance"
+CORRECTNESS = "correctness"
+VALIDITY = "validity"
+
+# Risk severity
+CRITICAL = "critical"
+HIGH = "high", 
+MEDIUM = "medium"
+LOW = "low"
+NEGLECTABLE = "neglectable"
+
 # Thread-local storage for annotation stacks
 _annotation_contexts = threading.local()
 
 class COPAnnotation:
     """Base class for all COP annotations that can be used as decorators or context managers."""
     
+    # Class-level registry of listeners
+    _listeners = []
+    
+    @classmethod
+    def register_listener(cls, listener):
+        """Register a listener for annotation events."""
+        cls._listeners.append(listener)
+        return listener
+    
+    @classmethod
+    def unregister_listener(cls, listener):
+        """Unregister a listener."""
+        if listener in cls._listeners:
+            cls._listeners.remove(listener)
+    
+    @classmethod
+    def notify_listeners(cls, event: str, annotation: 'COPAnnotation', **kwargs):
+        """Notify all listeners of an event."""
+        for listener in cls._listeners:
+            if hasattr(listener, event):
+                getattr(listener, event)(annotation, **kwargs)
+    
     def __init__(self, *args, **kwargs):
         """Store initialization arguments for later use."""
         self.args = args
         self.kwargs = kwargs
+        self._source_info = None
         self._initialize(*args, **kwargs)
     
     def _initialize(self, *args, **kwargs):
@@ -59,6 +96,18 @@ class COPAnnotation:
         # Push this annotation to its stack
         stack = getattr(_annotation_contexts, stack_name)
         stack.append(self)
+        
+        # Capture source information
+        try:
+            frame = inspect.currentframe().f_back.f_back  # Get caller of __enter__
+            self._source_info = {
+                'file': frame.f_code.co_filename,
+                'line': frame.f_lineno,
+                'function': frame.f_code.co_name,
+                'context': frame.f_locals.copy()  # Local variables
+            }
+        except Exception as e:
+            self._source_info = {'error': str(e)}
     
     def _exit_context(self):
         """
@@ -73,17 +122,56 @@ class COPAnnotation:
     
     def __call__(self, obj):
         """Use as a decorator."""
+        # Capture source information when used as decorator
+        try:
+            frame = inspect.currentframe().f_back  # Get caller frame
+            self._source_info = {
+                'file': frame.f_code.co_filename,
+                'line': frame.f_lineno,
+                'function': obj.__name__ if callable(obj) else str(obj),
+                'decorated_object': obj.__name__ if hasattr(obj, '__name__') else str(obj)
+            }
+        except Exception as e:
+            self._source_info = {'error': str(e)}
+            
+        # Notify listeners about decoration
+        self.notify_listeners('on_decorate', self, decorated_object=obj, source_info=self._source_info)
+            
         return self._apply_to_object(obj)
     
     def __enter__(self):
         """Enter annotation context."""
         self._enter_context()
+        self.notify_listeners('on_enter', self, source_info=self._source_info)
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exit annotation context."""
         self._exit_context()
+        self.notify_listeners('on_exit', self, exc_info=(exc_type, exc_val, exc_tb))
         return False  # Don't suppress exceptions
+    
+    def matches(self, condition: Callable[['COPAnnotation'], bool]) -> bool:
+        """Check if this annotation matches a condition."""
+        return condition(self)
+    
+    def get_source_info(self) -> Dict[str, Any]:
+        """Get information about where this annotation was defined."""
+        return self._source_info or {}
+    
+    @classmethod
+    def get_active_contexts(cls, annotation_type: Optional[Type['COPAnnotation']] = None) -> List['COPAnnotation']:
+        """Get all currently active contexts of a type."""
+        if annotation_type:
+            return get_current_annotations(annotation_type)
+        
+        # Collect all active annotations from all stacks
+        all_annotations = []
+        for attr_name in dir(_annotation_contexts):
+            if attr_name.endswith('_stack'):
+                all_annotations.extend(getattr(_annotation_contexts, attr_name))
+        
+        return all_annotations
 
 # Helper to get current annotations of a specific type
 def get_current_annotations(annotation_class):
@@ -102,19 +190,9 @@ class intent(COPAnnotation):
     
     def _apply_to_object(self, obj):
         setattr(obj, "__cop_intent__", self.description)
-        setattr(obj, "__cop_implementation_status__", self.status)
-        return obj
-
-class invariant(COPAnnotation):
-    """Document constraint that SHOULD be maintained."""
-    
-    def _initialize(self, condition):
-        self.condition = condition
-    
-    def _apply_to_object(self, obj):
-        if not hasattr(obj, "__cop_invariants__"):
-            setattr(obj, "__cop_invariants__", [])
-        getattr(obj, "__cop_invariants__").append(self.condition)
+        # Don't overwrite any explicitly set implementation status
+        if not hasattr(obj, "__cop_implementation_status__"):
+            setattr(obj, "__cop_implementation_status__", self.status)
         return obj
 
 class implementation_status(COPAnnotation):
@@ -158,45 +236,60 @@ class human_decision(COPAnnotation):
         setattr(obj, "__cop_decision_roles__", self.roles)
         return obj
 
-class security_risk(COPAnnotation):
+def risk(description, category=SECURITY, severity=HIGH, impact=None):
     """
-    Mark a component with a security risk that must be addressed.
+    Annotate a component with a risk that must be addressed.
     
     Args:
-        description: Specific security concern
+        description: Specific risk concern
+        category: Category of risk ("SECURITY", "PERFORMANCE", "CORRECTNESS", etc.)
         severity: Risk level ("HIGH", "MEDIUM", "LOW")
+        impact: Optional description of failure impact if risk is not addressed
     """
-    
-    def _initialize(self, description, severity="HIGH"):
-        self.description = description
-        self.severity = severity
-    
-    def _apply_to_object(self, obj):
-        setattr(obj, "__cop_security_risk__", self.description)
-        setattr(obj, "__cop_security_severity__", self.severity)
+    def decorator(obj):
+        if not hasattr(obj, "__cop_risks__"):
+            setattr(obj, "__cop_risks__", [])
+        
+        risk_info = {
+            "description": description,
+            "type": type,
+            "severity": severity,
+            "impact": impact
+        }
+        
+        getattr(obj, "__cop_risks__").append(risk_info)
+        
+        # For backward compatibility with security_risk
+        if type == "SECURITY":
+            setattr(obj, "__cop_security_risk__", description)
+            setattr(obj, "__cop_security_severity__", severity)
+        
         return obj
+    
+    return decorator
 
-class critical_invariant(COPAnnotation):
+class invariant(description category=VALIDITY, serverity=MEDIUM, impact=None):
     """
-    Mark an invariant as critical to system correctness or security.
-    
-    Args:
-        condition: The critical constraint that must be maintained
+    Legacy convenience wrapper - equivalent to @risk with VALIDITY type.
+    Consider using @risk(description, category="VALIDITY") or 
+    @risk(description, category="CORRECTNESS") instead.
     """
-    
-    def _initialize(self, condition):
-        self.condition = condition
-    
-    def _apply_to_object(self, obj):
-        if not hasattr(obj, "__cop_critical_invariants__"):
-            setattr(obj, "__cop_critical_invariants__", [])
-        getattr(obj, "__cop_critical_invariants__").append(self.condition)
-        return obj
+    return risk(description, category, severity=severity, impact=impact)
 
+# For backward compatibility
+def security_risk(description, severity=HIGH, impact=None):
+    """
+    Legacy convenience wrapper - equivalent to @risk with SECURITY type.
+    Consider using @risk(description, type="SECURITY") instead.
+    """
+    return risk(description, category=SECURITY, severity=severity, impact=None)
+    
 def mark_unimplemented(detail=None):
     """Simple helper for marking unimplemented code."""
     return implementation_status(NOT_IMPLEMENTED, details=detail)
     
-def mark_security_critical(risk_description, severity="HIGH"):
+def mark_security_critical(risk_description, impact=None):
     """Simple helper for marking security-critical code."""
-    return security_risk(risk_description, severity)
+    return risk(description, category=SECURITY, severity=CRITICAL)
+
+def human_decision
