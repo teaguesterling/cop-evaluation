@@ -12,20 +12,18 @@ import functools
 import inspect
 from typing import List, Dict, Any, Callable, Optional, Type, Union
 
-# Status constants
-IMPLEMENTED = "implemented"
-PARTIAL = "partial" 
-PLANNED = "planned"
-NOT_IMPLEMENTED = "not_implemented"
-AUTOMATION_READY = "automation_ready"
-REQUIRES_JUDGMENT = "requires_judgment"
-DEPRECATED = "deprecated"
+# Status constants and hierarchy
+IMPLEMENTED = "implemented"              # Implementation is complete and expected to be correct
+REQUIRES_JUDGMENT = "requires_judgment"  # Human input required to change this code
+BUGGY = "buggy"                          # Implementation is or was complete but has known bugs or failing tests
+PARTIAL = "partial"                      # Implementation is incomplete but has begun
+AUTOMATION_READY = "automation_ready"    # Implementation can be performed by an automation agent
+PLANNED = "planned"                      # Implementation is scheduled to begin soon
+NOT_IMPLEMENTED = "not_implemented"      # Implementation has not yet begun
+UNKNOWN = "unknown"                      # Implementation status is unknown
+DEPRECATED = "deprecated"                # Implementation is legacy and should be deprecated
 
 # Risk category constants
-SECURITY = "security"
-PERFORMANCE = "performance"
-CORRECTNESS = "correctness"
-VALIDITY = "validity"
 
 # Risk severity
 CRITICAL = "critical"
@@ -223,12 +221,78 @@ class implementation_status(COPAnnotation):
             
         return obj
 
-class human_decision(COPAnnotation):
-    """Mark where AI SHOULD NOT make autonomous decisions."""
+class decision(COPAnnotation):
+    """Annotate a decision point in code.
     
-    def _initialize(self, description, roles=None):
-        self.description = description
-        self.roles = roles
+    This decorator can be used throughout the decision lifecycle:
+    - Initially to pose a question and request a decision
+    - Later to record the decision made
+    - Finally to preserve a reference to important decisions
+
+    Examples:
+        @decision("Which authentication strategy should we use?",
+                 options=["JWT", "session", "OAuth"],
+                 category="security",
+                 scope="system")
+        
+        @decision("AUTH-001",
+                 status="implemented",
+                 answer="JWT",
+                 decider="security_team",
+                 rationale="Required for stateless scaling")
+                 
+        @decision("Use quicksort or mergesort?",
+                 options=["quicksort", "mergesort"],
+                 decider="AI", 
+                 answer="quicksort",
+                 confidence=0.9,
+                 rationale="Better average-case performance")
+    """
+
+    def _initialize(description_or_id, 
+            # Key decision attributes
+            options: list = None,
+            status: str = "pending",  # "pending", "decided", "implemented"
+            answer: Any = None,
+            rationale: str = None,
+            
+            # Attribution and authority
+            decider: str = None,  # Who made/should make the decision
+            delegate_to: str = None,  # Explicit delegation
+            confidence: float = None,  # 0.0-1.0 for AI decisions
+            
+            # Metadata and classification
+            category: str = "implementation",  # "architecture", "security", "performance", etc.
+            scope: str = "function",  # "function", "module", "system" 
+            impact: str = "low",  # "low", "medium", "high"
+            preserve: bool = True,  # Whether to keep long-term
+            id: str = None,  # Database reference
+            date: str = None,  # When decision was made
+            
+            # Catch-all for additional metadata
+            **kwargs) -> Callable:
+    """
+    Args:
+        description_or_id: Either a question/description or a reference ID
+        options: List of possible choices
+        status: Current status in the decision lifecycle
+        answer: The selected option (once decided)
+        rationale: Explanation of why this decision was made
+        
+        decider: Person, role, or entity (e.g., "AI") making the decision
+        delegate_to: Explicitly delegate decision authority
+        confidence: Confidence level (0.0-1.0) for AI decisions
+        
+        category: Type of decision for classification
+        scope: Scope of impact of this decision
+        impact: Significance level of the decision
+        preserve: Whether to keep in code after implementation
+        id: Reference ID in the decision database
+        date: ISO format date when decision was made
+        
+        **kwargs: Additional attributes to store with the decision
+    """
+        pass  # TODO
     
     def _apply_to_object(self, obj):
         setattr(obj, "__cop_decision_point__", True)
@@ -236,15 +300,16 @@ class human_decision(COPAnnotation):
         setattr(obj, "__cop_decision_roles__", self.roles)
         return obj
 
-def risk(description, category=SECURITY, severity=HIGH, impact=None):
+def risk(description, category="security", severity=HIGH, impact=None, mitigation=None):
     """
     Annotate a component with a risk that must be addressed.
     
     Args:
         description: Specific risk concern
-        category: Category of risk ("SECURITY", "PERFORMANCE", "CORRECTNESS", etc.)
-        severity: Risk level ("HIGH", "MEDIUM", "LOW")
+        severity: "LOW", "MEDIUM", "HIGH", "CRITICAL"
+        category: Optional risk category (e.g., "security", "performance")
         impact: Optional description of failure impact if risk is not addressed
+        mitigation: Optional mitigation strategy
     """
     def decorator(obj):
         if not hasattr(obj, "__cop_risks__"):
@@ -252,29 +317,42 @@ def risk(description, category=SECURITY, severity=HIGH, impact=None):
         
         risk_info = {
             "description": description,
-            "type": type,
+            "category": type,
             "severity": severity,
-            "impact": impact
+            "impact": impact,
+            "mitigation": mitigation,
         }
         
         getattr(obj, "__cop_risks__").append(risk_info)
-        
-        # For backward compatibility with security_risk
-        if type == "SECURITY":
-            setattr(obj, "__cop_security_risk__", description)
-            setattr(obj, "__cop_security_severity__", severity)
         
         return obj
     
     return decorator
 
-class invariant(description category=VALIDITY, serverity=MEDIUM, impact=None):
+class invariant(description critical=False, scope="always"):
     """
-    Legacy convenience wrapper - equivalent to @risk with VALIDITY type.
-    Consider using @risk(description, category="VALIDITY") or 
-    @risk(description, category="CORRECTNESS") instead.
+    Anniotate a constraint that should be maintained.
+    
+    Args:
+        condition: The invariant that should be true
+        critical: Whether this is a critical invariant (essential for correctness)
+        scope: Scope of enforcement ("always", "module", "test", "runtime")
     """
-    return risk(description, category, severity=severity, impact=impact)
+    def decorator(obj):
+        if not hasattr(obj, "__cop_invariants__"):
+            setattr(obj, "__cop_invariants__", [])
+        
+        invariant_info = {
+            "description": description,
+            "critical": critical,
+            "scope": scope,
+        }
+        
+        getattr(obj, "__cop_invariant__").append(invariant_info)
+        
+        return obj
+    
+    return decorator
 
 # For backward compatibility
 def security_risk(description, severity=HIGH, impact=None):
@@ -291,5 +369,3 @@ def mark_unimplemented(detail=None):
 def mark_security_critical(risk_description, impact=None):
     """Simple helper for marking security-critical code."""
     return risk(description, category=SECURITY, severity=CRITICAL)
-
-def human_decision
