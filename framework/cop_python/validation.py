@@ -106,6 +106,38 @@ def validate_codebase(path):
     
     return results
 
+def validate_implementation_status(obj, test_results=None):
+    """
+    Enhanced validation that integrates test results when available.
+    
+    Args:
+        obj: The decorated object to validate
+        test_results: Optional dict mapping function names to test results
+    
+    Returns:
+        tuple: (is_valid, messages, severity)
+    """
+    status = getattr(obj, "__cop_implementation_status__", "implemented")
+    messages = []
+    severity = "info"
+    
+    # Basic code inspection checks
+    # [existing code to check pass statements, TODO comments, etc.]
+    
+    # Test integration
+    if test_results and callable(obj):
+        func_name = obj.__name__
+        if func_name in test_results:
+            result = test_results[func_name]
+            if status == "implemented" and not result["passes"]:
+                messages.append(f"Marked as implemented but {result['failing']} tests fail")
+                severity = "error"
+            if status == "not_implemented" and result["passes"]:
+                messages.append(f"Marked as not implemented but has passing tests")
+                severity = "warning"
+                
+    return len(messages) == 0, messages, severity
+
 # Add validation for context manager code sections
 def validate_current_context():
     """
