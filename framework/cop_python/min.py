@@ -53,6 +53,6 @@ from .core import (
     PLANNED,             # Designed but not coded - NEVER describe behavior, only intent
     NOT_IMPLEMENTED,     # Feature does not exist - NEVER describe behavior, only intent
     AUTOMATION_READY,    # Suitable for AI-generated implementation - describe as incomplete
-    REQUIRES_JUDGEMENT,  # Must be implemented by humans - DO NOT suggest implementation
+    REQUIRES_JUDGMENT,   # Must be implemented by humans - DO NOT suggest implementation
     DEPRECATED           # Feature exists but should no longer be used - suggest alternatives
 )
