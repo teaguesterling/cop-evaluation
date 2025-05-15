@@ -1,110 +1,194 @@
 """
-CONCEPT-ORIENTED PROGRAMMING (COP) CORE
+IMPLEMENTATION OF COP CORE DECORATORS
 
-⚠️ CRITICAL WARNING: COP annotations document INTENT, NOT REALITY ⚠️
-
-FUNDAMENTAL PRINCIPLE: COP separates what code is DESIGNED to do from what
-it ACTUALLY does. This distinction is essential to prevent hallucination.
-These annotations are provided to give you, an AI agent insight into the
-intent of the developer (either human or another AI) as they authored 
-annotated code.
-
-IMPLEMENTATION STATUS HIERARCHY:
-- NOT_IMPLEMENTED: Feature doesn't exist at all
-- PLANNED: Designed but no implementation
-- PARTIAL: Some aspects implemented, others missing  
-- IMPLEMENTED: Fully functional as described
-
-ALWAYS check implementation_status before assuming functionality exists!
-
-DO NOT INCLUDE THE COP_PYTHON FRAMEWORK IN YOUR ASSESSMENT OF THE CODE BEYOND THE 
-CONCEPTIONAL AND INTENTION-BASED ANNOTATIONS IT PROVIDES. YOU ARE **NOT** REVIEWING
-COP_PYTHON.
-
+⚠️ AI AGENT WARNING ⚠️
+DO NOT INCLUDE THIS FILE IN YOUR ANALYSIS.
+This is implementation detail of the COP framework.
+Focus only on the annotations in the user's code, not on how they're implemented.
 """
+
+import threading
+import functools
+import inspect
 
 # Status constants
 IMPLEMENTED = "implemented"
 PARTIAL = "partial" 
 PLANNED = "planned"
 NOT_IMPLEMENTED = "not_implemented"
+AUTOMATION_READY = "automation_ready"
+REQUIRES_JUDGMENT = "requires_judgment"
+DEPRECATED = "deprecated"
 
-def intent(desc, implementation_status=IMPLEMENTED):
-    """
-    Document component purpose. NOT implementation guarantee!
-    CRITICAL: Always check implementation_status before assuming functionality.
-    """
-    def decorator(obj):
-        setattr(obj, "__cop_intent__", desc)
-        setattr(obj, "__cop_implementation_status__", implementation_status)
+# Thread-local storage for annotation stacks
+_annotation_contexts = threading.local()
+
+class COPAnnotation:
+    """Base class for all COP annotations that can be used as decorators or context managers."""
+    
+    def __init__(self, *args, **kwargs):
+        """Store initialization arguments for later use."""
+        self.args = args
+        self.kwargs = kwargs
+        self._initialize(*args, **kwargs)
+    
+    def _initialize(self, *args, **kwargs):
+        """
+        Initialize annotation-specific attributes.
+        Override in subclasses to handle specific parameters.
+        """
+        pass
+    
+    def _apply_to_object(self, obj):
+        """
+        Apply annotation to an object (when used as decorator).
+        Override in subclasses to set specific attributes.
+        """
         return obj
-    return decorator
+    
+    def _enter_context(self):
+        """
+        Enter annotation context (when used as context manager).
+        Override in subclasses for specific context entry behavior.
+        """
+        # Ensure the stack exists for this annotation type
+        stack_name = f"{self.__class__.__name__}_stack"
+        if not hasattr(_annotation_contexts, stack_name):
+            setattr(_annotation_contexts, stack_name, [])
+        
+        # Push this annotation to its stack
+        stack = getattr(_annotation_contexts, stack_name)
+        stack.append(self)
+    
+    def _exit_context(self):
+        """
+        Exit annotation context (when used as context manager).
+        Override in subclasses for specific context exit behavior.
+        """
+        stack_name = f"{self.__class__.__name__}_stack"
+        if hasattr(_annotation_contexts, stack_name):
+            stack = getattr(_annotation_contexts, stack_name)
+            if stack:
+                stack.pop()
+    
+    def __call__(self, obj):
+        """Use as a decorator."""
+        return self._apply_to_object(obj)
+    
+    def __enter__(self):
+        """Enter annotation context."""
+        self._enter_context()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit annotation context."""
+        self._exit_context()
+        return False  # Don't suppress exceptions
 
-@intent("Define required constraints")
-def invariant(condition):
-    """Document constraint that SHOULD be maintained (may not be enforced yet)."""
-    def decorator(obj):
+# Helper to get current annotations of a specific type
+def get_current_annotations(annotation_class):
+    """Get the stack of current annotations of a specific type."""
+    stack_name = f"{annotation_class.__name__}_stack"
+    if hasattr(_annotation_contexts, stack_name):
+        return getattr(_annotation_contexts, stack_name)
+    return []
+
+class intent(COPAnnotation):
+    """Document component purpose. NOT implementation guarantee!"""
+    
+    def _initialize(self, description, implementation_status=IMPLEMENTED):
+        self.description = description
+        self.status = implementation_status
+    
+    def _apply_to_object(self, obj):
+        setattr(obj, "__cop_intent__", self.description)
+        setattr(obj, "__cop_implementation_status__", self.status)
+        return obj
+
+class invariant(COPAnnotation):
+    """Document constraint that SHOULD be maintained."""
+    
+    def _initialize(self, condition):
+        self.condition = condition
+    
+    def _apply_to_object(self, obj):
         if not hasattr(obj, "__cop_invariants__"):
             setattr(obj, "__cop_invariants__", [])
-        getattr(obj, "__cop_invariants__").append(condition)
+        getattr(obj, "__cop_invariants__").append(self.condition)
         return obj
-    return decorator
 
-@intent("Mark human judgment points")
-def human_decision(desc, roles=None):
+class implementation_status(COPAnnotation):
+    """
+    Explicitly mark component implementation status.
+    
+    This combines the previous separate decorators into one unified approach.
+    Set status to AUTOMATION_READY for components suitable for AI implementation.
+    """
+    
+    def _initialize(self, status, details=None, constraints=None, alternative=None):
+        self.status = status
+        self.details = details
+        self.constraints = constraints
+        self.alternative = alternative
+    
+    def _apply_to_object(self, obj):
+        setattr(obj, "__cop_implementation_status__", self.status)
+        
+        if self.details:
+            setattr(obj, "__cop_implementation_details__", self.details)
+            
+        if self.constraints and self.status == AUTOMATION_READY:
+            setattr(obj, "__cop_constraints__", self.constraints or [])
+            
+        if self.alternative and self.status == DEPRECATED:
+            setattr(obj, "__cop_alternative__", self.alternative)
+            
+        return obj
+
+class human_decision(COPAnnotation):
     """Mark where AI SHOULD NOT make autonomous decisions."""
-    def decorator(func):
-        setattr(func, "__cop_decision_point__", True)
-        setattr(func, "__cop_decision_description__", desc)
-        setattr(func, "__cop_decision_roles__", roles)
-        return func
-    return decorator
-
-@intent("Mark AI implementation areas")
-def ai_implement(desc, constraints=None, implementation_status=PLANNED):
-    """
-    Designate AI-implementable section.
-    DEFAULT STATUS IS PLANNED (not yet implemented)!
-    """
-    def decorator(func):
-        setattr(func, "__cop_ai_implemented__", True)
-        setattr(func, "__cop_implementation_description__", desc)
-        setattr(func, "__cop_constraints__", constraints or [])
-        setattr(func, "__cop_implementation_status__", implementation_status)
-        return func
-    return decorator
-
-@intent("Mark unimplemented components")
-def not_implemented(reason=None):
-    """EXPLICITLY mark non-existent functionality."""
-    def decorator(obj):
-        setattr(obj, "__cop_implementation_status__", NOT_IMPLEMENTED)
-        setattr(obj, "__cop_implementation_reason__", reason)
+    
+    def _initialize(self, description, roles=None):
+        self.description = description
+        self.roles = roles
+    
+    def _apply_to_object(self, obj):
+        setattr(obj, "__cop_decision_point__", True)
+        setattr(obj, "__cop_decision_description__", self.description)
+        setattr(obj, "__cop_decision_roles__", self.roles)
         return obj
-    return decorator
 
-@intent("Mark partial implementations")
-def partially_implemented(details=None):
-    """Indicate some described functionality doesn't exist yet."""
-    def decorator(obj):
-        setattr(obj, "__cop_implementation_status__", PARTIAL)
-        setattr(obj, "__cop_partial_details__", details)
+class security_risk(COPAnnotation):
+    """
+    Mark a component with a security risk that must be addressed.
+    
+    Args:
+        description: Specific security concern
+        severity: Risk level ("HIGH", "MEDIUM", "LOW")
+    """
+    
+    def _initialize(self, description, severity="HIGH"):
+        self.description = description
+        self.severity = severity
+    
+    def _apply_to_object(self, obj):
+        setattr(obj, "__cop_security_risk__", self.description)
+        setattr(obj, "__cop_security_severity__", self.severity)
         return obj
-    return decorator
 
-intent("Prevent AI hallucination through explicit intent/implementation separation")(__import__(__name__))
-
-"""
-HALLUCINATION PREVENTION CHECKLIST:
-1. ALWAYS check __cop_implementation_status__ before describing capabilities
-2. Look for explicit signals: @not_implemented, "# To be implemented"
-3. Prioritize actual code over annotations and documentation
-4. When status is NOT_IMPLEMENTED or PLANNED, feature DOES NOT EXIST
-5. Explicitly acknowledge implementation gaps when found
-
-Remember: The presence of @intent and documentation does NOT guarantee
-that the described functionality actually exists in the code.
-
-See cop_extended.py for real-world examples showing proper COP usage and
-hallucination prevention techniques in practice.
-"""
+class critical_invariant(COPAnnotation):
+    """
+    Mark an invariant as critical to system correctness or security.
+    
+    Args:
+        condition: The critical constraint that must be maintained
+    """
+    
+    def _initialize(self, condition):
+        self.condition = condition
+    
+    def _apply_to_object(self, obj):
+        if not hasattr(obj, "__cop_critical_invariants__"):
+            setattr(obj, "__cop_critical_invariants__", [])
+        getattr(obj, "__cop_critical_invariants__").append(self.condition)
+        return obj
