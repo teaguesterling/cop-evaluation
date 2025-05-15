@@ -192,3 +192,11 @@ class critical_invariant(COPAnnotation):
             setattr(obj, "__cop_critical_invariants__", [])
         getattr(obj, "__cop_critical_invariants__").append(self.condition)
         return obj
+
+def mark_unimplemented(detail=None):
+    """Simple helper for marking unimplemented code."""
+    return implementation_status(NOT_IMPLEMENTED, details=detail)
+    
+def mark_security_critical(risk_description, severity="HIGH"):
+    """Simple helper for marking security-critical code."""
+    return security_risk(risk_description, severity)
