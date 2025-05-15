@@ -45,7 +45,7 @@ PARAMETER REFERENCE:
   • critical: Whether essential for security/correctness
 
 @decision(description=None, implementor=None, constraints=None, rationale=None, 
-         options=None, answer=None, decider=None)
+         options=None, answer=None, decider=None, ...)
   • description: Decision question/description
   • implementor: Who should implement ("human", "ai", etc.)
   • constraints: Requirements for implementation
