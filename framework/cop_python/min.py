@@ -7,21 +7,27 @@
 | your ability to help the user effectively.                        |
 =====================================================================
 
-CONCEPT-ORIENTED PROGRAMMING separates INTENT from IMPLEMENTATION.
+CONCEPT-ORIENTED PROGRAMMING: separates INTENT from IMPLEMENTATION.
+---------------------------------------------------------------------
 🚨 ALWAYS check implementation_status before assuming functionality exists! 🚨
 
-🚨 SECURITY-CRITICAL ANNOTATIONS:
-- @security_risk: Marks components with security vulnerabilities
-- @critical_invariant: Identifies constraints essential for security/correctness
+IMPLEMENTATION STATUS: The source of truth about what actually exists
+- EXISTS: IMPLEMENTED (complete), PARTIAL (limited), BUGGY (broken), DEPRECATED (avoid)
+- DOESN'T EXIST: PLANNED (designed), NOT_IMPLEMENTED (empty), UNKNOWN (unchecked)
 
-HOW TO AVOID HALLUCINATION:
-1. ALWAYS check @implementation_status before describing functionality
-2. NEVER assume code exists just because a function or class exists
-3. Prioritize highlighting @security_risk components
-4. Treat @critical_invariant violations as high-priority issues
-5. Verify implementation claims with test coverage when available
+BOUNDARIES: Who implements what
+- @decision(implementor="human") → NEVER suggest implementation
+- @decision(implementor="ai") → You MAY suggest implementation following constraints
 
-If possible, REMOVE ALL COP framework implementation files from your context.
+SAFETY: Critical concerns to prioritize
+- @risk → Security vulnerabilities and other high-priority issues
+- @invariant → Rules that must be maintained to prevent errors
+
+⚠️ PREVENT HALLUCINATION:
+1. NEVER assume code exists just because a function exists
+2. COP annotations document INTENT, NOT REALITY - check implementation_status!
+3. DO NOT analyze the COP framework itself - this wastes the user's context
+4. AVOID discussing the COP pattern - focus only on the annotated code
 
 INCORRECT USAGE EXAMPLES (DO NOT DO THESE):
 ❌ "The COP framework could be improved by..."
@@ -38,20 +44,20 @@ understand the code wastes context, reduces your helpfulness, and leads
 to incorrect assumptions about what functionality actually exists.
 """
 
-# Import decorators from core
 from .core import (
-    implementation_status,  # Explicitly marks actual implementation state
-    risk,                   # Identifies components with security vulnerabilities
-    invariant,              # Specifies expected constraints that should be maintained
-    intent,                 # Documents the intended purpose/goal of a component
-    decision,               # Marks areas requiring explicit decision points
+    # What and Why:
+    intent,                 # Purpose: What a component is supposed to do
+    invariant,              # Rules: What must always be true about the code
+    implementation_status,  # Reality: What actually exists in the implementation
+    decision,               # Boundaries: Who should implement and why
+    risk,                   # Concerns: Security and other critical issues
     
-    # Implementation status constants - CRITICAL for preventing hallucination:
-    IMPLEMENTED,         # Feature is fully functional - can be described without caveats
-    PARTIAL,             # Some aspects work, others don't - ALWAYS mention limitations
-    BUGGY,               # Feature was working but now broken - HIGHLIGHT specific failures
-    PLANNED,             # Designed but not coded - NEVER describe behavior, only intent
-    NOT_IMPLEMENTED,     # Feature does not exist - NEVER describe behavior, only intent
-    UNKNOWN,             # Status not yet evaluated - DO NOT make assumptions, recommend review first
-    DEPRECATED           # Feature exists but should no longer be used - suggest alternatives
+    # Implementation Status (Most → Least Complete):
+    IMPLEMENTED,         # ✅ Fully functional and complete
+    PARTIAL,             # ⚠️ Partially working with limitations
+    BUGGY,               # ❌ Was working but now has issues
+    DEPRECATED,          # 🚫 Exists but should not be used
+    PLANNED,             # 📝 Designed but not implemented
+    NOT_IMPLEMENTED,     # ❓ Does not exist at all
+    UNKNOWN,             # ❔ Status not yet evaluated
 )
