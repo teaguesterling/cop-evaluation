@@ -88,6 +88,54 @@ ANNOTATION BALANCE:
 - Limit to 3-4 annotations per component
 - Annotate public interfaces more thoroughly than internals
 
+DOCUMENTATION BEST PRACTICES:
+Deciding when to use @intent, docstrings, or both together:
+
+DOCSTRINGS ALONE: For implementation-focused documentation
+- When function names are self-explanatory
+- For internal implementation details
+- When parameter documentation is the primary focus
+- Example:
+  def format_date(date, format_string="%Y-%m-%d"):
+      """
+      Format a date according to the specified format string.
+      
+      Args:
+          date: The date to format
+          format_string: strftime-compatible format string
+      """
+
+@INTENT ALONE: For concept-level documentation
+- When tracking purpose separate from implementation
+- When paired with implementation status tracking
+- For architectural/conceptual organization
+- Example:
+  @intent("Calculate risk score per regulatory requirements")
+  @implementation_status(PARTIAL, details="Missing PEP check")
+  def calculate_risk_score(transaction):
+      # Implementation with simple parameters
+
+COMBINED APPROACH: For complete documentation
+- Security-critical components needing both intent and usage clarity
+- Complex domain concepts with significant technical details
+- Public APIs with implementation status concerns
+- Example:
+  @intent("Execute batch transaction processing")
+  @implementation_status(PARTIAL, details="No rollback support")
+  def process_batch(transactions):
+      """
+      Process multiple transactions as a batch.
+      
+      Args:
+          transactions: List of Transaction objects
+      """
+
+RULE OF THUMB:
+- Use @intent when the concept matters for architectural understanding
+- Use docstrings when usage details matter for developers calling the function
+- Use both when both conceptual understanding and usage details are important
+- Default to docstrings and add @intent only when concept-oriented benefits are clear
+
 EXAMPLE: EFFECTIVE ANNOTATION PATTERNS
 
 # Security-critical component
