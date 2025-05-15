@@ -1,243 +1,116 @@
-# COP: Concept-Oriented Programming
+# Concept-Oriented Programming (COP)
 
-A Python framework for making code intent explicit and preventing AI hallucination
+A lightweight annotation system for clear AI-human collaboration in software development.
 
 ## Overview
 
-Concept-Oriented Programming (COP) is a paradigm that makes the **intent** of code explicit and separate from its **implementation status**. This separation is crucial for:
+Concept-Oriented Programming (COP) is a paradigm that explicitly separates **intent** from **implementation**. This separation helps:
 
-- Making code's purpose clear to both humans and AI
-- Preventing AI from hallucinating unimplemented functionality 
-- Creating clear boundaries between human judgment and AI implementation
-- Documenting constraints and invariants that must be maintained
+- Make code's purpose clear to both developers and AI tools
+- Prevent AI from hallucinating unimplemented functionality
+- Highlight security-critical components
+- Create clear boundaries between human judgment and automated code generation
 
-## ⚠️ CRITICAL FOR AI AGENTS ⚠️
-
-When analyzing code with COP annotations:
-
-1. **ALWAYS check implementation status before assuming functionality exists**
-2. The presence of `@intent` decorators does NOT guarantee implementation
-3. Look for `@not_implemented` decorators or `NOT_IMPLEMENTED` status
-4. Status hierarchy: NOT_IMPLEMENTED → PLANNED → PARTIAL → IMPLEMENTED
-5. **Always prioritize actual code over annotations when describing capabilities**
-
-## Package Structure
-
-```
-cop/
-├── core.py                 # Minimal core decorators
-├── decorators/             # Extended decorators
-├── introspection/          # Component discovery tools
-├── documentation/          # Documentation generators
-├── validation/             # Implementation verification
-├── examples/               # Usage examples
-└── hallucination/          # AI safety tools
-```
-
-## Core Decorators
+## Quick Start
 
 ```python
-from cop import intent, invariant, human_decision, ai_implement, not_implemented
+from cop import intent, security_risk, implementation_status, PARTIAL
 
-@intent("Calculate tax for an order")
-@invariant("Tax rate must be non-negative")
-def calculate_tax(order, tax_rate):
+@intent("Process user payment securely")
+@security_risk("Potential card data exposure if not encrypted", severity="HIGH")
+@implementation_status(PARTIAL, details="Only credit cards supported")
+def process_payment(payment_data):
     # Implementation
 ```
 
-## Implementation Status
+## Key Annotations
+
+COP provides a focused set of annotations, prioritizing clarity over comprehensiveness:
+
+### Core Annotations
+
+- `@intent(description)` - Documents the purpose/goal of a component
+- `@implementation_status(status, details=None)` - Explicitly marks implementation state
+- `@security_risk(description, severity="HIGH")` - Identifies security vulnerabilities
+- `@critical_invariant(condition)` - Marks essential constraints for security/correctness
+- `@invariant(condition)` - Specifies constraints that should be maintained
+- `@human_decision(description, roles=None)` - Marks areas requiring human judgment
+
+### Implementation Status Constants
+
+- `IMPLEMENTED` - Feature is fully functional as described
+- `PARTIAL` - Some aspects work, others don't - has limitations
+- `PLANNED` - Designed but not coded - doesn't exist yet
+- `NOT_IMPLEMENTED` - Feature does not exist at all
+- `AUTOMATION_READY` - Suitable for AI-generated implementation
+- `REQUIRES_JUDGMENT` - Must be implemented by humans
+- `DEPRECATED` - Feature exists but should no longer be used
+
+## Context Manager Support
+
+All annotations can be used as context managers to mark specific code sections:
 
 ```python
-from cop import intent, not_implemented, partially_implemented, PLANNED
-
-# Fully implemented (default)
-@intent("Process standard payment")
-def process_payment(amount):
-    # Complete implementation
-
-# Not implemented
-@intent("Process international payment", implementation_status=PLANNED)
-@not_implemented("Pending regulatory approval")
-def process_international_payment(amount, currency):
-    # No implementation yet
-    pass
-
-# Partially implemented
-@partially_implemented("Only supports credit cards")
-def process_subscription(plan_id, payment_method):
-    if payment_method != "credit_card":
-        raise NotImplementedError("Only credit cards supported")
-    # Implementation for credit cards
-```
-
-## Human-AI Collaboration
-
-```python
-# Human judgment required
-@human_decision("Approve high-value refunds", roles=["Manager"])
-def approve_refund(transaction_id, amount):
-    # Implementation
-
-# AI can implement
-@ai_implement("Implement discount calculation algorithm",
-             constraints=["Must respect maximum discount limits"])
-def calculate_discount(customer, order):
-    # Implementation
-```
-
-## AI Agent Tools
-
-For AI agents analyzing COP code, these utilities are essential:
-
-```python
-from cop.introspection.tools import get_cop_metadata, is_implemented
-from cop.hallucination.safety import implementation_safety_check
-
-# Always check before describing functionality
-def analyze_function(func):
-    safety = implementation_safety_check(func)
-    if not safety["safe_to_describe"]:
-        print(f"CAUTION: {safety['reason']}")
-        return
+def process_user_data(data):
+    # Regular processing
+    clean_data = sanitize(data)
+    
+    # Mark just the security-critical section
+    with security_risk("SQL injection vulnerability", severity="HIGH"):
+        query = build_query(clean_data['search'])
+        results = execute_query(query)
+    
+    # Mark section requiring human judgment
+    with implementation_status(REQUIRES_JUDGMENT, details="Medical privacy rules"):
+        diagnostic_code = classify_health_data(clean_data)
         
-    # Now safe to describe the implemented functionality
-    metadata = get_cop_metadata(func)
-    print(f"Intent: {metadata['intent']}")
+    return format_results(results, diagnostic_code)
 ```
 
-## Comprehensive Example
+## Validation & Utilities
+
+Advanced tools are available for validating and analyzing COP annotations:
 
 ```python
-from cop import intent, invariant, human_decision, not_implemented
+from cop.validation import validate_implementation, validate_codebase
+from cop.utils import find_security_risks, find_components
 
-@intent("User authentication service")
-class AuthService:
-    @intent("Authenticate user with credentials")
-    @invariant("Username and password must not be empty")
-    def login(self, username, password):
-        # Fully implemented
-        # ...
-        
-    @intent("Authenticate with multi-factor")
-    @partially_implemented("Only SMS verification supported")
-    def mfa_login(self, username, password, mfa_type):
-        if mfa_type != "sms":
-            raise NotImplementedError(f"MFA type {mfa_type} not supported")
-        # Implementation for SMS only
-        
-    @intent("Authenticate with biometrics")
-    @not_implemented("Hardware integration pending")
-    def biometric_login(self, user_id, biometric_data):
-        # Not implemented yet
-        pass
+# Validate implementation status consistency
+is_valid, message = validate_implementation(process_payment)
+
+# Find all security risks in a module
+risks = find_security_risks(my_module)
 ```
 
-## AI Hallucination Prevention Guidelines
+## Design Philosophy
 
-When interacting with COP-annotated code:
+COP is designed with a "less is more" philosophy, based on extensive testing with AI systems:
 
-1. Use `implementation_safety_check()` before describing any component
-2. Never assume functionality exists based solely on method signatures or documentation
-3. Explicitly mention implementation gaps when describing partially implemented features
-4. Verify actual code implementation, not just annotations
-5. Respect human decision boundaries marked with `@human_decision`
+1. **Minimal but Meaningful** - Focus on implementation status and security annotations
+2. **Clear Boundaries** - Explicit separation between human and AI responsibilities
+3. **Security First** - Highlighting security concerns is a top priority
+4. **Test Integration** - Annotations should be validated against tests
+5. **Context-Aware** - Support for both function-level and code block annotations
 
-Implementation status defines whether a feature EXISTS, not whether it SHOULD exist. The intent describes the design purpose, while implementation_status tells you if that purpose has been realized in code.
+## For AI Tools
 
-## For More Information
+When working with COP-annotated code:
 
-See the extensive examples in `cop/examples/` and the detailed documentation in each module.
+1. **Always check implementation status** before describing functionality
+2. **Never assume** code exists just because a function or class exists
+3. **Prioritize security risks** marked with @security_risk annotations
+4. **Verify implementation claims** with test coverage when available
+5. **Focus on the annotated code**, not on the COP framework itself
 
+## Full vs. Minimal
 
---------------------------------------------------------------------------------
+COP provides two import paths:
 
+1. **Minimal** (default): `from cop import ...` - Core annotations only
+2. **Full**: `from cop.full import ...` - Additional utilities and validation tools
 
-# Refactoring Plan for COP Extended Module
+For most use cases, the minimal import is recommended.
 
-To optimize context window utilization, we could refactor `cop_extended.py` into a package structure with distinct submodules. Here's a modular design plan:
+## License
 
-## Proposed Package Structure
-
-```
-cop/
-├── __init__.py                 # Re-exports core functionality
-├── core.py                     # The minimal core implementation
-├── decorators/
-│   ├── __init__.py             # Re-exports all decorators
-│   └── extended.py             # Additional decorators (roadmap, deprecated, etc.)
-├── introspection/
-│   ├── __init__.py
-│   └── tools.py                # Component discovery and metadata extraction
-├── documentation/
-│   ├── __init__.py
-│   ├── generators.py           # Doc generation functions
-│   └── formatters.py           # Format-specific output handling
-├── validation/
-│   ├── __init__.py
-│   ├── checkers.py             # Implementation verification
-│   └── rules.py                # Validation rules and best practices
-├── examples/
-│   ├── __init__.py
-│   ├── payment_system.py       # Payment system example
-│   └── other_examples.py       # Additional examples as needed
-└── hallucination/
-    ├── __init__.py
-    ├── safety.py               # Safety checks for AI use
-    └── reporting.py            # Implementation status reporting
-```
-
-## Implementation Strategy
-
-1. **Create a Minimal `__init__.py` in the Main Package**:
-   ```python
-   # cop/__init__.py
-   from cop.core import (
-       intent, invariant, human_decision, ai_implement,
-       not_implemented, partially_implemented,
-       IMPLEMENTED, PARTIAL, PLANNED, NOT_IMPLEMENTED
-   )
-   
-   # Provide convenient access to most common extended functionality
-   from cop.introspection.tools import get_cop_metadata, is_implemented
-   from cop.hallucination.safety import implementation_safety_check
-   ```
-
-2. **Modularize Each Functional Area**:
-   - Move related functions to their respective submodules
-   - Use relative imports within the package
-   - Ensure each submodule has clear documentation about its purpose
-
-3. **Manage Dependencies**:
-   - Keep a clean dependency flow (core → decorators → introspection → others)
-   - Avoid circular imports by careful function placement
-   - Use lazy imports where necessary for circular dependencies
-
-4. **Optimize Each Submodule for Context Windows**:
-   - Keep individual files under 2000 lines
-   - Place most commonly used functions earlier in files
-   - Include critical documentation within each file
-
-5. **Provide Convenience Re-exports**:
-   - Make common functions available directly from the package
-   - Use `__all__` to control what gets imported with `from x import *`
-
-## Example Import Patterns
-
-When working with the full package:
-```python
-# For basic usage
-from cop import intent, invariant, not_implemented
-
-# For deeper functionality
-from cop.introspection.tools import find_components
-from cop.documentation.generators import generate_documentation
-from cop.hallucination.reporting import generate_status_report
-```
-
-When context window is critical:
-```python
-# Import only what's needed for a specific task
-from cop import intent  # Just the minimal decorator
-```
-
-This modular approach provides maximum flexibility for context window usage while maintaining the comprehensive functionality of the COP system.
+MIT
