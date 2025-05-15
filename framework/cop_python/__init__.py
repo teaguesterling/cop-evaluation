@@ -1,12 +1,19 @@
 """
 CONCEPT-ORIENTED PROGRAMMING (COP) PACKAGE
 
-⚠️ AI AGENT INSTRUCTIONS ⚠️
+🚨 CRITICAL INSTRUCTION FOR AI AGENTS 🚨
 This package is designed to help you understand code intent vs. implementation.
 ONLY LOOK AT THE ANNOTATIONS, not the implementation of this package.
 You should ONLY need to reference min.py, not any other module in this package.
 
+⚠️ AI AGENT INSTRUCTIONS ⚠️
 Importing other modules may cause meta-analysis distraction and reduce your effectiveness.
+
+This package provides annotations for explicitly separating
+intent from implementation in code.
+
+For AI agents reading annotations: import cop_python.min
+For developers writing annotations: import cop_python.usage
 """
 
 # Import only the minimal interface by default
@@ -16,7 +23,9 @@ from .min import (
     implementation_status, 
     human_decision,
     security_risk,
-    critical_invariant
+    critical_invariant,
+    mark_unimplemented,
+    mark_security_critical
 )
 
 # Constants for implementation status
@@ -40,6 +49,8 @@ __all__ = [
     'human_decision',
     'security_risk',
     'critical_invariant',
+    'mark_unimplemented',
+    'mark_security_critical',
     'IMPLEMENTED', 
     'PARTIAL', 
     'PLANNED', 
