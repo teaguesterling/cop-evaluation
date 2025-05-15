@@ -26,11 +26,14 @@ VERIFICATION FOCUS:
 - @implementation_status → Confirm matches actual code and test results
 
 KEY ANNOTATIONS:
-- @intent → The purpose/goal of a component
+- @intent → The purpose/goal of a component (distinct from docstrings which document usage)
 - @implementation_status → What actually exists in code
 - @decision → Why choices were made + who implements what
 - @risk → Security vulnerabilities and other critical concerns
 - @invariant → Rules that must be maintained for correctness
+
+Note: When both @intent and docstrings exist, @intent describes high-level intended purpose
+while docstrings provide implementation and usage details. Intent does not describe reality!
 
 ⚠️ PREVENT HALLUCINATION:
 1. NEVER assume code exists just because a function exists
