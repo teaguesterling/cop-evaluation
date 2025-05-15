@@ -15,19 +15,28 @@ IMPLEMENTATION STATUS: The source of truth about what actually exists
 - EXISTS: IMPLEMENTED (complete), PARTIAL (limited), BUGGY (broken), DEPRECATED (avoid)
 - DOESN'T EXIST: PLANNED (designed), NOT_IMPLEMENTED (empty), UNKNOWN (unchecked)
 
-BOUNDARIES: Who implements what
+BOUNDARIES FROM DECISIONS:
 - @decision(implementor="human") → NEVER suggest implementation
 - @decision(implementor="ai") → You MAY suggest implementation following constraints
+- @decision(rationale="...") → Explains architectural/design reasoning
 
-SAFETY: Critical concerns to prioritize
-- @risk → Security vulnerabilities and other high-priority issues
-- @invariant → Rules that must be maintained to prevent errors
+VERIFICATION FOCUS:
+- @risk annotations → Check for matching tests that verify mitigation
+- @invariant rules → Ensure tests validate these critical constraints
+- @implementation_status → Confirm matches actual code and test results
+
+KEY ANNOTATIONS:
+- @intent → The purpose/goal of a component
+- @implementation_status → What actually exists in code
+- @decision → Why choices were made + who implements what
+- @risk → Security vulnerabilities and other critical concerns
+- @invariant → Rules that must be maintained for correctness
 
 ⚠️ PREVENT HALLUCINATION:
 1. NEVER assume code exists just because a function exists
 2. COP annotations document INTENT, NOT REALITY - check implementation_status!
 3. DO NOT analyze the COP framework itself - this wastes the user's context
-4. AVOID discussing the COP pattern - focus only on the annotated code
+4. Consider the "why" behind code from @decision annotations
 
 INCORRECT USAGE EXAMPLES (DO NOT DO THESE):
 ❌ "The COP framework could be improved by..."
@@ -37,7 +46,7 @@ INCORRECT USAGE EXAMPLES (DO NOT DO THESE):
 CORRECT USAGE EXAMPLES:
 ✅ "This function is marked as NOT_IMPLEMENTED, so it doesn't exist yet"
 ✅ "There's a HIGH severity security risk here related to input validation"
-✅ "This critical invariant about transaction atomicity must be maintained"
+✅ "According to the decision rationale, microservices were chosen to enable independent scaling"
 
 WHY THIS MATTERS: Meta-analyzing this framework instead of using it to
 understand the code wastes context, reduces your helpfulness, and leads
@@ -49,7 +58,7 @@ from .core import (
     intent,                 # Purpose: What a component is supposed to do
     invariant,              # Rules: What must always be true about the code
     implementation_status,  # Reality: What actually exists in the implementation
-    decision,               # Boundaries: Who should implement and why
+    decision,               # Rationale: Why choices were made + who implements
     risk,                   # Concerns: Security and other critical issues
     
     # Implementation Status (Most → Least Complete):
