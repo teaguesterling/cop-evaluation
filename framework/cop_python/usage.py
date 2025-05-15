@@ -33,19 +33,24 @@ PARAMETER REFERENCE:
 
 @implementation_status(status, details=None, alternative=None)
   • status: IMPLEMENTED, PARTIAL, BUGGY, PLANNED, NOT_IMPLEMENTED, UNKNOWN, DEPRECATED
-  • details: Explain limitations or partial implementation
+  • details: Optionally, explain limitations or partial implementation
   • alternative: For DEPRECATED, what to use instead
 
-@risk(description, severity="MEDIUM")
+@risk(description, category="security", severity="MEDIUM", impact=None, mitigation=None)
   • description: What the risk is
+  • category: The risk categury: ("security", "performance", etc.)
   • severity: "LOW", "MEDIUM", "HIGH", "CRITICAL"
+  • impact: An optional assessement of the impact of the risk if not addressed
+  • mitigation: An optional list of any mitigation strategies that *have been* taken
 
-@invariant(condition, critical=False)
+@invariant(condition, critical=False, scope="always")
   • condition: What must always be true
   • critical: Whether essential for security/correctness
+  • scope: What's the scope of this invariant (should be ommitted if "always")
 
 @decision(description=None, implementor=None, constraints=None, rationale=None, 
-         options=None, answer=None, decider=None, ...)
+         options=None, answer=None, decider=None, **kwargs)
+(All arguments here are optional and should only be included if explicitly relevant)
   • description: Decision question/description
   • implementor: Who should implement ("human", "ai", etc.)
   • constraints: Requirements for implementation
@@ -53,9 +58,35 @@ PARAMETER REFERENCE:
   • options: Considered alternatives
   • answer: The selected option
   • decider: Who made the decision
+  • **kwargs: Other annotations are captured and preserved
 
 @intent(description)
   • description: Purpose of the component
+
+TESTING ANNOTATIONS:
+Tests complete the truth triangle by verifying that implementation matches intent.
+- Write tests that explicitly verify @invariant conditions
+- Ensure @risk annotations have matching security tests
+- Use test results to validate @implementation_status claims
+- Remember: Untested invariants are just aspirations
+
+THE DECISION TETRAHEDRON:
+COP connects four dimensions of software understanding:
+- Intent: What we want to accomplish
+- Implementation: What actually exists in code
+- Tests: Verification that code works correctly
+- Decisions: Why we chose specific approaches
+  
+Capturing decisions creates a complete picture that preserves
+knowledge that would otherwise be lost over time.
+
+ANNOTATION BALANCE:
+"Less is more" - Focus on quality over quantity
+- ALWAYS include implementation status
+- Add security risks and critical invariants
+- Document important decisions, not trivial ones
+- Limit to 3-4 annotations per component
+- Annotate public interfaces more thoroughly than internals
 
 EXAMPLE: EFFECTIVE ANNOTATION PATTERNS
 
