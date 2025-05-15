@@ -14,23 +14,12 @@ from typing import List, Dict, Any, Callable, Optional, Type, Union
 
 # Status constants and hierarchy
 IMPLEMENTED = "implemented"              # Implementation is complete and expected to be correct
-REQUIRES_JUDGMENT = "requires_judgment"  # Human input required to change this code
 BUGGY = "buggy"                          # Implementation is or was complete but has known bugs or failing tests
 PARTIAL = "partial"                      # Implementation is incomplete but has begun
-AUTOMATION_READY = "automation_ready"    # Implementation can be performed by an automation agent
 PLANNED = "planned"                      # Implementation is scheduled to begin soon
 NOT_IMPLEMENTED = "not_implemented"      # Implementation has not yet begun
 UNKNOWN = "unknown"                      # Implementation status is unknown
 DEPRECATED = "deprecated"                # Implementation is legacy and should be deprecated
-
-# Risk category constants
-
-# Risk severity
-CRITICAL = "critical"
-HIGH = "high", 
-MEDIUM = "medium"
-LOW = "low"
-NEGLECTABLE = "neglectable"
 
 # Thread-local storage for annotation stacks
 _annotation_contexts = threading.local()
@@ -222,82 +211,130 @@ class implementation_status(COPAnnotation):
         return obj
 
 class decision(COPAnnotation):
-    """Annotate a decision point in code.
+    """
+    Annotate a decision point or implementation guidance in code.
     
-    This decorator can be used throughout the decision lifecycle:
-    - Initially to pose a question and request a decision
-    - Later to record the decision made
-    - Finally to preserve a reference to important decisions
-
-    Examples:
-        @decision("Which authentication strategy should we use?",
-                 options=["JWT", "session", "OAuth"],
-                 category="security",
-                 scope="system")
-        
-        @decision("AUTH-001",
-                 status="implemented",
-                 answer="JWT",
-                 decider="security_team",
-                 rationale="Required for stateless scaling")
-                 
-        @decision("Use quicksort or mergesort?",
-                 options=["quicksort", "mergesort"],
-                 decider="AI", 
-                 answer="quicksort",
-                 confidence=0.9,
-                 rationale="Better average-case performance")
+    This versatile decorator can be used throughout the decision lifecycle:
+    - Request a decision with options
+    - Record a decision that was made
+    - Document implementation guidance
+    - Preserve architectural rationales
+    
+    Multiple decisions can be attached to a single component.
+    
+    Concise syntax for implementation guidance:
+    @decision(implementor="ai")  # AI can implement (replaces AUTOMATION_READY)
+    @decision(implementor="human")  # Human must implement (replaces REQUIRES_JUDGMENT)
+    
+    Examples of different decision types:
+    
+    # Security decision in progress
+    @decision(
+        "How should we store user passwords?",
+        options=["bcrypt", "Argon2", "PBKDF2"],
+        category="security",
+        impact="high"
+    )
+    
+    # Architectural decision already made
+    @decision(
+        "Should we use microservices?",
+        status="implemented",
+        answer="yes",
+        decider="architecture_team",
+        rationale="Enables independent scaling of components",
+        reference_id="ARCH-042"
+    )
+    
+    # Implementation guidance for AI
+    @decision(
+        implementor="ai",
+        constraints=["Use parameterized queries", "Handle Unicode input"],
+        reason="Standard validation function"
+    )
     """
-
-    def _initialize(description_or_id, 
-            # Key decision attributes
-            options: list = None,
-            status: str = "pending",  # "pending", "decided", "implemented"
-            answer: Any = None,
-            rationale: str = None,
-            
-            # Attribution and authority
-            decider: str = None,  # Who made/should make the decision
-            delegate_to: str = None,  # Explicit delegation
-            confidence: float = None,  # 0.0-1.0 for AI decisions
-            
-            # Metadata and classification
-            category: str = "implementation",  # "architecture", "security", "performance", etc.
-            scope: str = "function",  # "function", "module", "system" 
-            impact: str = "low",  # "low", "medium", "high"
-            preserve: bool = True,  # Whether to keep long-term
-            id: str = None,  # Database reference
-            date: str = None,  # When decision was made
-            
-            # Catch-all for additional metadata
-            **kwargs) -> Callable:
-    """
-    Args:
-        description_or_id: Either a question/description or a reference ID
-        options: List of possible choices
-        status: Current status in the decision lifecycle
-        answer: The selected option (once decided)
-        rationale: Explanation of why this decision was made
-        
-        decider: Person, role, or entity (e.g., "AI") making the decision
-        delegate_to: Explicitly delegate decision authority
-        confidence: Confidence level (0.0-1.0) for AI decisions
-        
-        category: Type of decision for classification
-        scope: Scope of impact of this decision
-        impact: Significance level of the decision
-        preserve: Whether to keep in code after implementation
-        id: Reference ID in the decision database
-        date: ISO format date when decision was made
-        
-        **kwargs: Additional attributes to store with the decision
-    """
-        pass  # TODO
+    
+    def _initialize(self, description_or_id=None, 
+                   # Implementation guidance (concise syntax)
+                   implementor=None, constraints=None, reason=None,
+                   
+                   # Key decision attributes
+                   options=None, status="pending", answer=None, rationale=None,
+                   
+                   # Attribution and authority
+                   decider=None, delegate_to=None, confidence=None, 
+                   
+                   # Metadata and classification
+                   category=None, scope="function", impact="low", priority="medium",
+                   preserve=False, reference_id=None, date=None, **kwargs):
+        self.description = description_or_id
+        self.implementor = implementor
+        self.constraints = constraints
+        self.reason = reason
+        self.options = options
+        self.status = status
+        self.answer = answer
+        self.rationale = rationale
+        self.decider = decider
+        self.delegate_to = delegate_to
+        self.confidence = confidence
+        self.category = category
+        self.scope = scope
+        self.impact = impact
+        self.priority = priority
+        self.reference_id = reference_id
+        self.date = date
+        self.kwargs = kwargs
+        self.preserve = preserve            
     
     def _apply_to_object(self, obj):
-        setattr(obj, "__cop_decision_point__", True)
-        setattr(obj, "__cop_decision_description__", self.description)
-        setattr(obj, "__cop_decision_roles__", self.roles)
+        # Create decision dictionary with all information
+        decision_dict = {}
+        
+        # Add core decision information
+        if self.description:
+            decision_dict["description"] = self.description
+        # Implementation guidance
+        if self.implementor:
+            decision_dict["implementor"] = self.implementor
+            if self.constraints:
+                decision_dict["constraints"] = self.constraints
+            if self.reason:
+                decision_dict["reason"] = self.reason
+        # Decision details
+        decision_dict["status"] = self.status
+        if self.answer:
+            decision_dict["answer"] = self.answer
+        if self.rationale:
+            decision_dict["rationale"] = self.rationale
+        if self.decider:
+            decision_dict["decider"] = self.decider
+        if self.options:
+            decision_dict["options"] = self.options
+        # Metadata
+        if self.reference_id:
+            decision_dict["reference_id"] = self.reference_id
+        if self.category:
+            decision_dict["category"] = self.category
+        if self.impact:
+            decision_dict["impact"] = self.impact
+        if self.scope != "function":
+            decision_dict["scope"] = self.scope
+        if self.priority != "medium":
+            decision_dict["priority"] = self.priority
+        decision_dict["preserve"] = self.preserve
+        if self.date:
+            decision_dict["date"] = self.date
+        # Add any additional attributes
+        for key, value in self.kwargs.items():
+            decision_dict[key] = value
+        # Initialize decisions list if it doesn't exist
+        if not hasattr(obj, "__cop_decisions__"):
+            setattr(obj, "__cop_decisions__", [])
+            
+        # Append this decision to the list
+        getattr(obj, "__cop_decisions__").append(decision_dict)
+            
         return obj
 
 def risk(description, category="security", severity=HIGH, impact=None, mitigation=None):
