@@ -2,6 +2,7 @@ The COP Testing System
 This directory contains the enhanced Concept-Oriented Programming (COP) framework with comprehensive testing support. The testing system is designed to verify that COP annotations accurately reflect code reality, especially for context managers that mark sections requiring human judgment.
 
 Directory Structure
+```
 cop_python/
 ├── __init__.py
 ├── core.py           # Enhanced core with listener support
@@ -17,6 +18,7 @@ cop_python/
 │       ├── __init__.py
 │       ├── plugin.py # pytest plugin
 │       └── fixtures.py # Test fixtures
+```
 Key Components
 1. Enhanced COPAnnotation Base Class
 The core annotation class has been enhanced with:
