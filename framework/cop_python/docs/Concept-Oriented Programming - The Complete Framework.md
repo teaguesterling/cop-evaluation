@@ -141,6 +141,29 @@ Our latest insight: COP's greatest value lies in creating queryable semantic gra
 - Automatic verification of implementation status claims
 - Knowledge preservation across team transitions
 
+#### 2.6 Model-Specific Findings 🤖📊
+
+Our testing revealed significant differences in how different AI models handle COP annotations:
+
+**Claude 3.5 (Haiku)** 🚀:
+- Sometimes fails completely with certain variants (0-word responses)
+- Needs concise prompts; full prompts cause timeouts
+- More sensitive to annotation complexity
+
+**Claude 3.7 (Sonnet)** 📚:
+- Handles complexity better but tends toward verbose analysis
+- Can process full COP but gets distracted by framework
+- Benefits most from balanced prompts
+
+#### 2.7 Prompt Engineering Impact 📝⚡
+
+Prompt style significantly impacts COP effectiveness:
+- **Full**: Caused timeouts and meta-distraction
+- **Balanced**: Optimal - includes time management and prioritization
+- **Concise**: Too brief, missed critical issues
+
+The interaction between prompt style and annotation density is crucial for optimal results.
+
 ### Chapter 3: The Decision Tetrahedron
 
 #### 3.1 Four Dimensions of Software Truth 🔷🧩
@@ -355,9 +378,9 @@ Several approaches proved ineffective:
 3. **Comprehensive annotation**: Diminishing returns after 3-4 annotations per method
 4. **Trust without verification**: Status claims need test validation
 
-#### 5.3 The Optimal Pattern: COP-min Enhanced 🌟💯
+#### 5.3 The Optimal Pattern: The COP-min Enhanced Pattern 🌟💯
 
-Based on our testing, this emerged as the most effective approach:
+Testing revealed this exact pattern to be most effective:
 
 ```python
 @intent("Process payments securely")  # Only if adds clear value
@@ -368,7 +391,27 @@ def process_payment():
     pass
 ```
 
-#### 5.4 Guiding Principles 🧭🔱
+#### 5.5 The Test Integration Revelation ✅🔄
+
+Adding test coverage creates a powerful verification triangle:
+```
+Intent (annotations) ← → Implementation (code)
+           ↓                    ↓
+            Tests (validation)
+```
+This three-way relationship provides automatic validation of implementation 
+status claims and creates a self-reinforcing system of truth.
+
+#### 5.6 The Concept Graph Evolution 🕸️🧠
+
+COP's greatest value emerges when annotations, code, and tests combine into queryable semantic graphs:
+
+ - Enables queries like "find all security risks in unimplemented payment code"
+ - Combines AST, annotations, and test coverage data
+ - Provides semantic navigation versus traditional syntactic search
+ - Creates a living knowledge base that evolves with the codebase
+
+#### 5.7 Guiding Principles 🧭🔱
 
 1. **Start with implementation status only** ⚠️
 2. **Add security annotations for critical code** 🔒
@@ -376,7 +419,7 @@ def process_payment():
 4. **Validate with tests** ✅
 5. **Use balanced prompts with explicit anti-meta-distraction guidance** 🔄
 
-#### 5.5 Practical Implementation Realities 🏢🔧
+#### 5.8 Practical Implementation Realities 🏢🔧
 
 Real-world implementation has revealed several patterns:
 
