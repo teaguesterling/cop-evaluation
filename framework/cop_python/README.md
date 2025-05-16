@@ -1,140 +1,196 @@
-# Concept-Oriented Programming (COP)
+Concept-Oriented Programming (COP) 🧠↔️🤖
+Show Image
+Show Image
 
-A lightweight annotation system that explicitly separates **intent** from **implementation** for clearer AI-human collaboration in software development.
+A lightweight annotation system that explicitly separates intent from implementation for clearer AI-human collaboration in software development.
 
-## Quick Start
+Why Use COP? 🤔
+COP addresses key challenges in modern software development:
 
-```python
-from cop import intent, implementation_status, security_risk, PARTIAL
+Prevents AI Hallucination ⚠️: Makes it explicit what's implemented vs. planned
+Highlights Security Concerns 🔒: Marks security-critical components clearly
+Clarifies Collaboration 🤝: Distinguishes human judgment areas from AI implementation zones
+Guides Testing ✅: Indicates what aspects of code need validation
+Improves Onboarding 🚀: Helps new developers understand system intent
+Installation 📦
+bash
+pip install cop-python
+Quick Start 🚀
+python
+from cop import intent, implementation_status, risk, invariant, PARTIAL
 
 @intent("Process user payment securely")
 @implementation_status(PARTIAL, details="Only credit cards supported")
-@security_risk("Potential card data exposure if not encrypted", severity="HIGH")
+@risk("Potential card data exposure if not encrypted", category="security", severity="HIGH")
 def process_payment(payment_data):
     """Process payment through payment gateway and record transaction."""
     # Implementation
-```
+The Decision Tetrahedron 🔷
+COP is built around four dimensions of software truth:
 
-## Why Use COP?
+                     Decisions 🤔
+                       /\
+                      /  \
+                     /    \
+                    /      \
+                   /        \
+                  /          \
+                 /            \
+                /              \
+               /                \
+              /                  \
+             /                    \
+   Intent 🎯/______________________\  Tests ✅
+     \                               /
+      \                             /
+       \                           /
+        \                         /
+         \                       /
+          \                     /
+           \___________________/
+           Implementation 🛠️
+Intent 🎯: What the code is supposed to do
+Implementation 🛠️: What the code actually does
+Tests ✅: Verification that implementation matches intent
+Decisions 🤔: Why specific approaches were chosen (and by whom)
+Core Annotations 📌
+Essential Annotations (Use These First)
+@implementation_status(status, details=None) - CRITICAL: Current implementation state
+@intent(description) - Purpose/goal of a component
+@risk(description, category="security", severity="HIGH") - Security-critical components
+@invariant(condition, critical=True) - Essential constraints that must be maintained
+@decision(implementor="human|ai", reason=None, constraints=None) - Collaboration boundaries
+Implementation Status Constants
+python
+IMPLEMENTED     # ✅ Fully functional and complete
+PARTIAL         # ⚠️ Partially working with limitations
+BUGGY           # ❌ Was working but now has issues
+DEPRECATED      # 🚫 Exists but should not be used
+PLANNED         # 📝 Designed but not implemented
+NOT_IMPLEMENTED # ❓ Does not exist at all
+UNKNOWN         # ❔ Status not yet evaluated
+Usage Examples 📝
+Unimplemented Features
+python
+@intent("Generate PDF reports")
+@implementation_status(NOT_IMPLEMENTED)
+def generate_pdf(report_data):
+    """Generate a PDF report from data."""
+    raise NotImplementedError("PDF generation not implemented yet")
+Security-Critical Code
+python
+@intent("Authenticate user credentials")
+@implementation_status(IMPLEMENTED)
+@risk("Password exposure", category="security", severity="HIGH")
+@invariant("Passwords never stored in plaintext", critical=True)
+def authenticate_user(username, password):
+    """Authenticate a user with their credentials."""
+    # Implementation
+Collaborative Implementation
+python
+@intent("Process data feeds")
+@implementation_status(PARTIAL, details="Only RSS implemented")
+def process_data_feed(feed_url, feed_type):
+    """Process data from external feeds."""
+    
+    # Human implements the security-critical validation
+    @decision(implementor="human", reason="Security validation")
+    def validate_feed(feed_url, feed_type):
+        # Human-implemented validation
+    
+    # AI can implement the actual processing
+    @decision(implementor="ai", constraints=[
+        "Handle network errors gracefully",
+        "Respect rate limits",
+        "Log all processing issues"
+    ])
+    def process_feed_content(validated_feed):
+        # AI implementation
+Best Practices ⭐
+Less is More
+Testing has shown that minimal, focused annotations are more effective than comprehensive ones:
 
-COP addresses key challenges in modern software development:
+python
+# GOOD: Focused on critical information
+@implementation_status(PARTIAL, details="Only supports credit cards")
+@risk("PCI compliance required", category="security", severity="HIGH")
+def process_payment(payment):
+    # Implementation
 
-- **Prevents AI Hallucination**: Makes it explicit what's implemented vs. planned
-- **Highlights Security Concerns**: Marks security-critical components clearly
-- **Clarifies Collaboration**: Distinguishes human judgment areas from AI implementation zones
-- **Guides Testing**: Indicates what aspects of code need validation
-- **Improves Onboarding**: Helps new developers understand system intent
+# BAD: Too many annotations create noise
+@intent("Process payments securely and efficiently")
+@implementation_status(PARTIAL, details="Only supports credit cards")
+@risk("PCI compliance required", category="security", severity="HIGH")
+@invariant("Amount must be positive")
+@invariant("Currency must be supported")
+@invariant("Payment method must be valid")
+@decision(implementor="human", reason="Fraud detection thresholds")
+def process_payment(payment):
+    # Implementation
+Always Mark Implementation Status
+Implementation status is critical for preventing hallucination:
 
-## Core Annotations
-
-### Essential Annotations (Use These First)
-
-- `@implementation_status(status, details=None)` - **CRITICAL**: Current implementation state
-- `@intent(description)` - Purpose/goal of a component
-- `@security_risk(description, severity="HIGH")` - Security-critical components
-- `@critical_invariant(condition)` - Essential constraints that must be maintained
-
-### Additional Annotations (Use As Needed)
-
-- `@invariant(condition)` - Expected constraints that should be maintained
-- `@human_decision(description, roles=None)` - Areas requiring human judgment
-
-### Implementation Status Constants
-
-- `IMPLEMENTED` - Feature is fully functional as described
-- `PARTIAL` - Some aspects work, others don't (specify limitations in details)
-- `PLANNED` - Designed but not coded (doesn't exist yet)
-- `NOT_IMPLEMENTED` - Feature does not exist at all
-- `AUTOMATION_READY` - Suitable for AI-generated implementation
-- `REQUIRES_JUDGMENT` - Must be implemented by humans
-- `DEPRECATED` - Feature exists but should no longer be used
-
-## When To Use Each Annotation
-
-### @implementation_status - ALWAYS USE
-
-**Always** include implementation status on public methods/functions:
-
-```python
+python
 # GOOD: Clear implementation status
-@implementation_status(NOT_IMPLEMENTED, details="Planned for Q3 release")
+@implementation_status(NOT_IMPLEMENTED)
 def export_to_pdf(report):
     raise NotImplementedError("PDF export not implemented yet")
 
 # BAD: No implementation status, risk of hallucination
 def export_to_pdf(report):
     raise NotImplementedError("PDF export not implemented yet")
-```
+Prioritize Security Annotations
+Security annotations have the highest ROI after implementation status:
 
-### @intent - Use for Non-Obvious Components
-
-```python
-# GOOD: Intent explains non-obvious purpose
-@intent("Normalize database schema to prevent insertion anomalies")
+python
+# GOOD: Explicit security risk
 @implementation_status(IMPLEMENTED)
-def restructure_tables(schema):
-    # Implementation
-
-# UNNECESSARY: Function name is self-explanatory
-@intent("Get user by ID") # Redundant
-@implementation_status(IMPLEMENTED)
-def get_user_by_id(user_id):
-    # Implementation
-```
-
-### @security_risk - Use for ALL Security-Critical Code
-
-```python
-# GOOD: Marks security concern clearly
-@security_risk("SQL injection via unsanitized input", severity="HIGH")
-@implementation_status(PARTIAL, details="Basic sanitization implemented")
+@risk("SQL injection via unsanitized input", category="security", severity="HIGH")
 def execute_query(user_input):
     # Implementation
+Testing Integration ✅
+Connect tests directly to annotations for verification:
 
-# BAD: Security concern hidden in docstring 
-@implementation_status(PARTIAL)
-def execute_query(user_input):
-    """Execute the database query.
-    
-    Note: Be careful about SQL injection.
-    """
-    # Implementation
-```
+python
+from cop.testing import test_for
 
-### @critical_invariant - Use for Essential Constraints
+# Register a test for a security risk
+@test_for("payment_system", "process_payment", 
+         risk={"description": "Card data exposure", "category": "security"})
+def test_payment_encrypts_card_data():
+    """Test that card data is properly encrypted."""
+    # Test implementation
 
-```python
-# GOOD: Critical invariant is explicit
-@critical_invariant("Account balance must never be negative")
-@implementation_status(IMPLEMENTED)
-def process_withdrawal(account, amount):
-    # Implementation
+# Register a test for an invariant
+@test_for("accounts", "withdraw", 
+         invariant="Account balance cannot be negative")
+def test_withdraw_prevents_overdraft():
+    """Test that withdrawals prevent overdrafts."""
+    # Test implementation
+CLI Tools 🛠️
+bash
+# Check implementation status of a module
+$ cop status payment_system.py
+✅ process_payment: IMPLEMENTED
+⚠️ refund_payment: PARTIAL (reason: "No support for cryptocurrency")
+❓ generate_invoice: NOT_IMPLEMENTED
 
-# BAD: Critical constraint hidden in docstring
-@implementation_status(IMPLEMENTED)
-def process_withdrawal(account, amount):
-    """Process withdrawal from account.
-    
-    The account balance should never be negative.
-    """
-    # Implementation
-```
+# Find security risks
+$ cop risks payment_system.py
+🔒 process_payment: "Card data exposure" (HIGH)
+🔒 store_payment_info: "Data storage security" (HIGH)
 
-## COP vs. Docstrings
-
+# Generate concept graph visualization
+$ cop graph payment_system.py --output=payment_graph.html
+COP vs. Docstrings 📄
 COP annotations and docstrings serve different purposes:
 
-### When to Use COP Annotations
-
-- To mark implementation status (always use for this)
-- To highlight security risks (always use for this)
-- To specify critical invariants that must be preserved
-- To indicate human decision boundaries
-
-```python
+COP annotations: Mark implementation status, security risks, critical invariants, and collaboration boundaries
+Docstrings: Document function signatures, usage examples, implementation details
+python
 @intent("Process payment securely through payment gateway")
 @implementation_status(IMPLEMENTED)
-@security_risk("PCI compliance required", severity="HIGH")
+@risk("PCI compliance required", category="security", severity="HIGH")
 def process_payment(payment):
     """
     Process a payment through the configured payment gateway.
@@ -149,224 +205,25 @@ def process_payment(payment):
         PaymentError: If payment processing fails
     """
     # Implementation
-```
+Progressive Adoption 📈
+Start simple and add annotations as needed:
 
-### When to Use Docstrings
-
-- For function signature information (args, returns, exceptions)
-- For detailed usage examples
-- For implementation details
-- For internal documentation
-
-### Bad Practices to Avoid
-
-```python
-# BAD: Critical information only in docstring
-def process_payment(payment):
-    """
-    Process payment securely.
-    
-    NOTE: This is only partially implemented.
-    SECURITY RISK: PCI compliance required.
-    """
-    # Implementation
-
-# BAD: Docstring duplicating COP annotations
-@intent("Process payment securely")
-@implementation_status(PARTIAL)
-@security_risk("PCI compliance required", severity="HIGH")
-def process_payment(payment):
-    """
-    Purpose: Process payment securely
-    Status: Partially implemented
-    Security Risk: PCI compliance required
-    """
-    # Implementation
-```
-
-## Usage Patterns
-
-### Progressive Annotation
-
-Start minimal, add annotations incrementally:
-
-1. **Essential First**: Always add `@implementation_status`
-2. **Security Focus**: Add `@security_risk` for sensitive code
-3. **Intent Clarity**: Add `@intent` for non-obvious components
-4. **Critical Constraints**: Add `@critical_invariant` for must-maintain rules
-
-### Annotation Lifecycle
-
-As your code evolves, update annotations accordingly:
-
-```python
-# Initial implementation
-@intent("Send welcome email to new users")
-@implementation_status(PLANNED)
-def send_welcome_email(user):
-    raise NotImplementedError()
-
-# During development
-@intent("Send welcome email to new users")
-@implementation_status(PARTIAL, details="Basic email works, no customization")
-@security_risk("Email address validation needed", severity="MEDIUM")
-def send_welcome_email(user):
-    # Basic implementation
-
-# Complete implementation
-@intent("Send welcome email to new users")
-@implementation_status(IMPLEMENTED)
-@security_risk("Email address validation needed", severity="MEDIUM")
-def send_welcome_email(user):
-    # Full implementation
-```
-
-### Context Managers
-
-For specific code sections rather than entire functions:
-
-```python
-def process_user_data(data):
-    # Regular processing
-    clean_data = sanitize(data)
-    
-    # Only mark security-critical section
-    with security_risk("SQL injection vulnerability"):
-        query = build_query(clean_data['search'])
-        results = execute_query(query)
-        
-    return format_results(results)
-```
-
-## Best Practices
-
-### Less is More
-
-Testing has shown that minimal, focused annotations are more effective than comprehensive ones:
-
-```python
-# GOOD: Focused on critical information
-@implementation_status(PARTIAL, details="Only supports credit cards")
-@security_risk("PCI compliance required", severity="HIGH")
-def process_payment(payment):
-    # Implementation
-
-# BAD: Too many annotations create noise
-@intent("Process payments securely and efficiently")
-@implementation_status(PARTIAL, details="Only supports credit cards")
-@security_risk("PCI compliance required", severity="HIGH")
-@invariant("Amount must be positive")
-@invariant("Currency must be supported")
-@invariant("Payment method must be valid")
-@human_decision("Fraud detection thresholds", roles=["Security"])
-def process_payment(payment):
-    # Implementation
-```
-
-### Status Accuracy
-
-Always ensure implementation status is accurate:
-
-1. Update status when implementation changes
-2. Be specific about limitations in the details
-3. Don't mark as IMPLEMENTED until tests verify it
-
-### Security Focus
-
-Security annotations are the highest ROI annotations:
-
-1. Always mark security-critical code with `@security_risk`
-2. Use appropriate severity levels (HIGH, MEDIUM, LOW)
-3. Ensure security-critical code has test coverage
-
-### Test Integration
-
-Verify implementation status with tests:
-
-```python
-@implementation_status(IMPLEMENTED)
-def calculate_total(items):
-    # Implementation
-
-# Test verifies implementation claim
-def test_calculate_total():
-    items = [{"price": 10}, {"price": 20}]
-    assert calculate_total(items) == 30
-    
-    # Edge cases
-    assert calculate_total([]) == 0
-    assert calculate_total([{"price": -5}]) == 0
-```
-
-## Annotation Checklist
-
-Before committing code, verify:
-
-✓ All public functions have implementation status  
-✓ Security-sensitive code is marked with security_risk  
-✓ Critical invariants are explicitly documented  
-✓ No implementation status is out of date  
-✓ Test coverage validates implementation claims  
-✓ No excessive annotations (less is more)
-
-## Real-World Example
-
-Here's how COP looks in a more complete system:
-
-```python
-@intent("Handle user authentication securely")
-@implementation_status(IMPLEMENTED)
-class AuthService:
-    @intent("Authenticate user with username and password")
-    @implementation_status(IMPLEMENTED)
-    @security_risk("Password handling requires secure storage", severity="HIGH")
-    def login(self, username, password):
-        """
-        Authenticate a user with username and password.
-        
-        Args:
-            username: User's username or email
-            password: User's password
-            
-        Returns:
-            AuthToken if successful, None otherwise
-        """
-        # Implementation
-    
-    @intent("Log out user and invalidate their session")
-    @implementation_status(PARTIAL, details="Web sessions only, mobile pending")
-    def logout(self, token):
-        """
-        Log out a user by invalidating their token.
-        
-        Args:
-            token: Auth token to invalidate
-        """
-        # Implementation
-    
-    @intent("Reset user password via email confirmation")
-    @implementation_status(NOT_IMPLEMENTED)
-    @security_risk("Email verification required", severity="HIGH")
-    def reset_password(self, email):
-        """
-        Send password reset email and handle reset.
-        
-        Args:
-            email: User's email address
-        """
-        raise NotImplementedError("Planned for next sprint")
-```
-
-## For AI Tools
-
+Start with implementation status ⚠️ - Always add this first
+Add security risks 🔒 - For security-sensitive code
+Add collaboration boundaries 🤝 - When working with AI assistants
+Add intent for complex components 🎯 - When purpose isn't obvious
+Add critical invariants ✅ - For must-maintain constraints
+For AI Tools 🤖
 When working with COP-annotated code:
 
-1. **Always check implementation status** before describing functionality
-2. **Never assume** code exists just because a function or class exists
-3. **Prioritize security risks** marked with @security_risk annotations
-4. **Verify implementation claims** with test coverage when available
-5. **Focus on the annotated code**, not on the COP framework itself
+Always check implementation status before describing functionality
+Never assume code exists just because a function or class exists
+Prioritize security risks marked with @risk annotations
+Respect collaboration boundaries marked with @decision
+Focus on the annotated code, not on the COP framework itself
+Contributing 👥
+Contributions are welcome! Please check out our contributing guide to get started.
 
-## License
+License 📜
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-MIT
