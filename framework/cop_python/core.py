@@ -7,23 +7,41 @@ This is implementation detail of the COP framework.
 Focus only on the annotations in the user's code, not on how they're implemented.
 """
 
-import threading
 import functools
+from enum import Enum
 import inspect
+import threading
+from typing import NamedTuple, Any, Tuple, Dict, Optional
 
-# Status constants - ordered from most to least complete
-IMPLEMENTED = "implemented"         # ✅ Fully functional and complete
-PARTIAL = "partial"                 # ⚠️ Partially working with limitations
-BUGGY = "buggy"                     # ❌ Was working but now has issues
-DEPRECATED = "deprecated"           # 🚫 Exists but should not be used
-PLANNED = "planned"                 # 📝 Designed but not implemented
-NOT_IMPLEMENTED = "not_implemented" # ❓ Does not exist at all
-UNKNOWN = "unknown"                 # ❔ Status not yet evaluated
+
+class ImplementationStatusValues(Enum):
+    # Status constants - ordered from most to least complete
+    IMPLEMENTED = 5                     # ✅ Fully functional and complete
+    PARTIAL = 4                         # ⚠️ Partially working with limitations
+    BUGGY = 3                           # ❌ Was working but now has issues
+    DEPRECATED = 2                      # 🚫 Exists but should not be used
+    PLANNED = 1                         # 📝 Designed but not implemented
+    NOT_IMPLEMENTED = 0                 # ❓ Does not exist at all
+    UNKNOWN = -1                        # ❔ Status not yet evaluated
+
+
+class COPSystemStatus(Enum):
+    DISABLED = 0
+    ANNOTATE = 1
+    TRACE = 2
+
+class COPAnnotation(NamedTuple):
+    """Represents a COP annotation with type and arguments."""
+    kind: str                                   # e.g., "intent", "invariant" 
+    value: Optional[str] = None                 # Positional arguments
+    modifiers: Optional[Dict[str, Any]] = None  # Keyword arguments
 
 # Thread-local storage for annotation stacks (used by context managers)
 _annotation_contexts = threading.local()
+_cop_status = COPSystemStatus.DISABLED  # Global setting instead of thread-local for simplicity
+_DISABLED = COPSystemStatus.DISABLED
 
-class COPAnnotation:
+class COPAnnotationBase:
     """
     Base class for all COP annotations that can be used as decorators or context managers.
     
@@ -37,7 +55,11 @@ class COPAnnotation:
     - _apply_to_object: Apply annotation to a decorated object
     """
     
-    def __init__(self, *args, **kwargs):
+    annotation_kind = "annotation"
+    
+    _annotation = None
+    
+    def __init__(self, annotation: COPAnnotationDefinition):
         """
         Initialize the annotation with provided arguments.
         
@@ -45,23 +67,28 @@ class COPAnnotation:
             *args: Positional arguments for the annotation
             **kwargs: Keyword arguments for the annotation
         """
-        self.args = args
-        self.kwargs = kwargs
-        self._initialize(*args, **kwargs)
-    
-    def _initialize(self, *args, **kwargs):
+        sefl._annotation = annotation
+
+    @classmethod
+    def get_from_object(cls, obj) -> List[COPAnnotation]:
         """
-        Initialize annotation-specific attributes.
-        
-        This method should be overridden by subclasses to handle their specific parameters.
+        Get all annotations of this type on an object or an empty
+        list if the object had no decorations.
         
         Args:
-            *args: Positional arguments for the annotation
-            **kwargs: Keyword arguments for the annotation
+            obj: The potentially decorated object
+            
+        Returns:
+            A list of this kind of annotations defined on obj
         """
-        pass
+        if hasattr(obj, "__cop_annotations__"):
+            all_annotations = obj.__cop_annotations__
+            annotations = [anno for anno in all_annotations if anno.kind == cls.annotation_kind]
+            return annotations
+        else:
+            return []
     
-    def _apply_to_object(self, obj):
+    def __call__(self, obj):
         """
         Apply annotation to an object (when used as decorator).
         
@@ -74,9 +101,16 @@ class COPAnnotation:
         Returns:
             The decorated object
         """
+        if _cop_status is _DISABLED or self._annotation is None:
+            return obj
+        elif not hasattr(obj, "__cop_annotations__"):
+            setattr(obj, "__cop_annotations__", [])
+
+        obj.__cop_annotations__.append(self._annotation)
+        
         return obj
     
-    def _enter_context(self):
+    def __enter__(self):
         """
         Enter annotation context (when used as context manager).
         
@@ -91,39 +125,6 @@ class COPAnnotation:
         # Push this annotation to its stack
         stack = getattr(_annotation_contexts, stack_name)
         stack.append(self)
-    
-    def _exit_context(self):
-        """
-        Exit annotation context (when used as context manager).
-        
-        Pops this annotation from its stack.
-        """
-        stack_name = f"{self.__class__.__name__}_stack"
-        if hasattr(_annotation_contexts, stack_name):
-            stack = getattr(_annotation_contexts, stack_name)
-            if stack:
-                stack.pop()
-    
-    def __call__(self, obj):
-        """
-        Use annotation as a decorator.
-        
-        Args:
-            obj: The object to decorate
-            
-        Returns:
-            The decorated object
-        """
-        return self._apply_to_object(obj)
-    
-    def __enter__(self):
-        """
-        Enter annotation context when used as a context manager.
-        
-        Returns:
-            self: The annotation object
-        """
-        self._enter_context()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -138,7 +139,11 @@ class COPAnnotation:
         Returns:
             False: Don't suppress exceptions
         """
-        self._exit_context()
+        stack_name = f"{self.__class__.__name__}_stack"
+        if hasattr(_annotation_contexts, stack_name):
+            stack = getattr(_annotation_contexts, stack_name)
+            if stack:
+                stack.pop()
         return False  # Don't suppress exceptions
 
 # Helper to get current annotations of a specific type
@@ -159,6 +164,20 @@ def get_current_annotations(annotation_class):
         return getattr(_annotation_contexts, stack_name)
     return []
 
+def get_object_annotations(obj) -> :
+    """
+    Get all of the COP annotations on an object, if they are defined or
+    an empty list of no annotations have been set.
+
+    Args:
+        obj: The (potentially) annotated object
+        
+    """
+    if hasattr(obj, "__cop_annotations__"):
+        return obj.__cop_annotations__
+    else:
+        return []
+
 class intent(COPAnnotation):
     """
     Document the intended purpose of a component.
@@ -177,28 +196,10 @@ class intent(COPAnnotation):
         with intent("Calculate tax based on jurisdiction"):
             tax = calculate_tax(amount, location)
     """
-    
-    def _initialize(self, description):
-        """
-        Initialize intent annotation.
-        
-        Args:
-            description: Description of the component's intended purpose
-        """
-        self.description = description
-    
-    def _apply_to_object(self, obj):
-        """
-        Apply intent annotation to an object.
-        
-        Args:
-            obj: The object being decorated
-            
-        Returns:
-            The decorated object
-        """
-        setattr(obj, "__cop_intent__", self.description)
-        return obj
+    def __init__(sef, description):
+        if _cop_status is _DISABLED:
+            return
+        self._annotation = COPAnnotation(cls.annotation_kind, description)
 
 class implementation_status(COPAnnotation):
     """
@@ -236,39 +237,17 @@ class implementation_status(COPAnnotation):
             # This code block is not implemented
             raise NotImplementedError()
     """
+    annotation_kind = "implementation_status"
     
-    def _initialize(self, status, details=None, alternative=None):
-        """
-        Initialize implementation status annotation.
-        
-        Args:
-            status: Current implementation status (use constants like IMPLEMENTED)
-            details: Optional details about the status (e.g., limitations)
-            alternative: For DEPRECATED status, what to use instead
-        """
-        self.status = status
-        self.details = details
-        self.alternative = alternative
-    
-    def _apply_to_object(self, obj):
-        """
-        Apply implementation status annotation to an object.
-        
-        Args:
-            obj: The object being decorated
-            
-        Returns:
-            The decorated object
-        """
-        setattr(obj, "__cop_implementation_status__", self.status)
-        
-        if self.details:
-            setattr(obj, "__cop_implementation_details__", self.details)
-            
-        if self.alternative and self.status == DEPRECATED:
-            setattr(obj, "__cop_alternative__", self.alternative)
-            
-        return obj
+    def __init__(sef, status, details=None, alternative=None):
+        if _cop_status is _DISABLED:
+            return
+        modifers = {}
+        if details is not None:
+            modifiers["details"] = details
+        if alternative is not None:
+            modifiers["alternative"] = alternative
+        self._annotation = COPAnnotation(cls.annotation_kind, status, modifiers)
 
 class invariant(COPAnnotation):
     """
@@ -291,8 +270,9 @@ class invariant(COPAnnotation):
         with invariant("Database connection must be active"):
             result = db.execute(query)
     """
-    
-    def _initialize(self, condition, critical=False, scope="always"):
+    annotaiton_kind = "invariant"
+
+    def __init__(sef, status, critical=False, scope="always")):
         """
         Initialize invariant annotation.
         
@@ -301,33 +281,15 @@ class invariant(COPAnnotation):
             critical: Whether this is essential for security/correctness
             scope: When this invariant applies (e.g., "always", "runtime")
         """
-        self.condition = condition
-        self.critical = critical
-        self.scope = scope
+        if _cop_status is _DISABLED:
+            return
+        modifers = {}
+        if details is not None:
+            modifiers["details"] = details
+        if alternative is not None:
+            modifiers["alternative"] = alternative
+        self._annotation = COPAnnotation(cls.annotation_kind, status, modifiers)
     
-    def _apply_to_object(self, obj):
-        """
-        Apply invariant annotation to an object.
-        
-        Args:
-            obj: The object being decorated
-            
-        Returns:
-            The decorated object
-        """
-        # Initialize invariants list if it doesn't exist
-        if not hasattr(obj, "__cop_invariants__"):
-            setattr(obj, "__cop_invariants__", [])
-        
-        # Add this invariant to the list
-        invariant_data = {
-            "condition": self.condition,
-            "critical": self.critical,
-            "scope": self.scope
-        }
-        
-        getattr(obj, "__cop_invariants__").append(invariant_data)
-        return obj
 
 class risk(COPAnnotation):
     """
@@ -353,8 +315,8 @@ class risk(COPAnnotation):
             temp_buffer = allocate_large_buffer()
     """
     
-    def _initialize(self, description, category="security", severity="MEDIUM", 
-                   impact=None, mitigation=None):
+    def __init__(self, description, category="security", severity="MEDIUM", 
+                 impact=None, mitigation=None):
         """
         Initialize risk annotation.
         
@@ -392,11 +354,7 @@ class risk(COPAnnotation):
             "severity": self.severity
         }
         
-        if self.impact:
-            risk_data["impact"] = self.impact
-            
-        if self.mitigation:
-            risk_data["mitigation"] = self.mitigation
+        
             
         getattr(obj, "__cop_risks__").append(risk_data)
         return obj
