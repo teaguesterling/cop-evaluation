@@ -16,19 +16,20 @@ from typing import NamedTuple, Any, Tuple, Dict, Optional
 
 class ImplementationStatusValues(Enum):
     # Status constants - ordered from most to least complete
-    IMPLEMENTED = 5                     # ✅ Fully functional and complete
-    PARTIAL = 4                         # ⚠️ Partially working with limitations
-    BUGGY = 3                           # ❌ Was working but now has issues
-    DEPRECATED = 2                      # 🚫 Exists but should not be used
-    PLANNED = 1                         # 📝 Designed but not implemented
-    NOT_IMPLEMENTED = 0                 # ❓ Does not exist at all
-    UNKNOWN = -1                        # ❔ Status not yet evaluated
+    IMPLEMENTED = 5       # ✅ Fully functional and complete
+    PARTIAL = 4           # ⚠️ Partially working with limitations
+    BUGGY = 3             # ❌ Was working but now has issues
+    DEPRECATED = 2        # 🚫 Exists but should not be used
+    PLANNED = 1           # 📝 Designed but not implemented
+    NOT_IMPLEMENTED = 0   # ❓ Does not exist at all
+    UNKNOWN = -1          # ❔ Status not yet evaluated
 
 
 class COPSystemStatus(Enum):
-    DISABLED = 0
-    ANNOTATE = 1
-    TRACE = 2
+    DISABLED = 0  # Bypass adding all COP annotation actions
+    ANNOTATE = 1  # Add COP annotations on decorated components
+    TRACE = 2     # Add COP annotations and enable frame level tracing
+
 
 class COPAnnotation(NamedTuple):
     """Represents a COP annotation with type and arguments."""
@@ -36,10 +37,12 @@ class COPAnnotation(NamedTuple):
     value: Optional[str] = None                 # Positional arguments
     modifiers: Optional[Dict[str, Any]] = None  # Keyword arguments
 
+
 # Thread-local storage for annotation stacks (used by context managers)
 _annotation_contexts = threading.local()
 _cop_status = COPSystemStatus.DISABLED  # Global setting instead of thread-local for simplicity
 _DISABLED = COPSystemStatus.DISABLED
+
 
 class COPAnnotationBase:
     """
@@ -55,13 +58,14 @@ class COPAnnotationBase:
     - _apply_to_object: Apply annotation to a decorated object
     """
     
-    annotation_kind = "annotation"
+    kind = "annotation"
     
     _annotation = None
     
     def __init__(self, annotation: COPAnnotationDefinition):
         """
         Initialize the annotation with provided arguments.
+        This should be overridden by subclasses.
         
         Args:
             *args: Positional arguments for the annotation
@@ -83,7 +87,7 @@ class COPAnnotationBase:
         """
         if hasattr(obj, "__cop_annotations__"):
             all_annotations = obj.__cop_annotations__
-            annotations = [anno for anno in all_annotations if anno.kind == cls.annotation_kind]
+            annotations = [anno for anno in all_annotations if anno.kind is cls.kind]
             return annotations
         else:
             return []
@@ -146,37 +150,6 @@ class COPAnnotationBase:
                 stack.pop()
         return False  # Don't suppress exceptions
 
-# Helper to get current annotations of a specific type
-def get_current_annotations(annotation_class):
-    """
-    Get the stack of current annotations of a specific type.
-    
-    This is used by context managers to track nested annotations.
-    
-    Args:
-        annotation_class: The annotation class to get the stack for
-        
-    Returns:
-        list: The stack of current annotations of the specified type
-    """
-    stack_name = f"{annotation_class.__name__}_stack"
-    if hasattr(_annotation_contexts, stack_name):
-        return getattr(_annotation_contexts, stack_name)
-    return []
-
-def get_object_annotations(obj) -> :
-    """
-    Get all of the COP annotations on an object, if they are defined or
-    an empty list of no annotations have been set.
-
-    Args:
-        obj: The (potentially) annotated object
-        
-    """
-    if hasattr(obj, "__cop_annotations__"):
-        return obj.__cop_annotations__
-    else:
-        return []
 
 class intent(COPAnnotation):
     """
@@ -196,10 +169,13 @@ class intent(COPAnnotation):
         with intent("Calculate tax based on jurisdiction"):
             tax = calculate_tax(amount, location)
     """
+    kind = "intent"
+
     def __init__(sef, description):
         if _cop_status is _DISABLED:
             return
-        self._annotation = COPAnnotation(cls.annotation_kind, description)
+        self._annotation = COPAnnotation(cls.kind, description)
+
 
 class implementation_status(COPAnnotation):
     """
@@ -237,7 +213,7 @@ class implementation_status(COPAnnotation):
             # This code block is not implemented
             raise NotImplementedError()
     """
-    annotation_kind = "implementation_status"
+    kind = "implementation_status"
     
     def __init__(sef, status, details=None, alternative=None):
         if _cop_status is _DISABLED:
@@ -247,7 +223,8 @@ class implementation_status(COPAnnotation):
             modifiers["details"] = details
         if alternative is not None:
             modifiers["alternative"] = alternative
-        self._annotation = COPAnnotation(cls.annotation_kind, status, modifiers)
+        self._annotation = COPAnnotation(cls.kind, status, modifiers)
+
 
 class invariant(COPAnnotation):
     """
@@ -270,7 +247,7 @@ class invariant(COPAnnotation):
         with invariant("Database connection must be active"):
             result = db.execute(query)
     """
-    annotaiton_kind = "invariant"
+    kind = "invariant"
 
     def __init__(sef, status, critical=False, scope="always")):
         """
@@ -288,7 +265,8 @@ class invariant(COPAnnotation):
             modifiers["details"] = details
         if alternative is not None:
             modifiers["alternative"] = alternative
-        self._annotation = COPAnnotation(cls.annotation_kind, status, modifiers)
+        modifiers = modifiers if modifiers else None
+        self._annotation = COPAnnotation(cls.kind, status, modifiers)
     
 
 class risk(COPAnnotation):
@@ -314,6 +292,7 @@ class risk(COPAnnotation):
             # Risky code section
             temp_buffer = allocate_large_buffer()
     """
+    kind = "risk"
     
     def __init__(self, description, category="security", severity="MEDIUM", 
                  impact=None, mitigation=None):
@@ -327,37 +306,18 @@ class risk(COPAnnotation):
             impact: Optional assessment of the impact if not addressed
             mitigation: Optional strategies that have been implemented
         """
-        self.description = description
-        self.category = category
-        self.severity = severity
-        self.impact = impact
-        self.mitigation = mitigation
-    
-    def _apply_to_object(self, obj):
-        """
-        Apply risk annotation to an object.
-        
-        Args:
-            obj: The object being decorated
-            
-        Returns:
-            The decorated object
-        """
-        # Initialize risks list if it doesn't exist
-        if not hasattr(obj, "__cop_risks__"):
-            setattr(obj, "__cop_risks__", [])
-        
-        # Add this risk to the list
-        risk_data = {
-            "description": self.description,
+        if _cop_status is _DISABLED:
+            return
+        modifers = {
             "category": self.category,
             "severity": self.severity
         }
-        
-        
-            
-        getattr(obj, "__cop_risks__").append(risk_data)
-        return obj
+        if impact is not None:
+            modifiers["impact"] = impact
+        if alternative is not None:
+            modifiers["mitigation"] = mitigation
+        self._annotation = COPAnnotation(cls.kind, description, modifiers)
+    
 
 class decision(COPAnnotation):
     """
@@ -391,25 +351,31 @@ class decision(COPAnnotation):
         with decision(implementor="human", reason="Security-critical section"):
             # This section requires human implementation
     """
+    kind = "decision"
     
-    def _initialize(self, description_or_id=None, 
-                   # Implementation guidance (concise syntax)
-                   implementor=None, constraints=None, reason=None,
+    def __init__(self, 
+                 # Short and optional longer decision description
+                 brief="implementation boundary", description=None,
+
+                 # Implementation guidance (concise syntax)
+                 implementor=None, constraints=None, reason=None,
                    
-                   # Key decision attributes
-                   options=None, status="pending", answer=None, rationale=None,
+                 # Key decision attributes
+                 options=None, status=None, answer=None, rationale=None,
                    
-                   # Attribution and authority
-                   decider=None, delegate_to=None, confidence=None, 
+                 # Attribution and authority
+                 decider=None, delegate=None, confidence=None, 
                    
-                   # Metadata and classification
-                   category=None, scope="function", impact="low", priority="medium",
-                   preserve=None, reference_id=None, date=None, **kwargs):
+                 # Metadata and classification
+                 category=None, scope=None, impact=None, priority=None,
+                 preserve=None, ref=None, date=None, see_also=None, **kwargs):
         """
         Initialize decision annotation.
         
         Args:
-            description_or_id: Question, description, or reference ID
+            # Overview
+            brief: Question, blurb, or ref ID (default: "implementation boundary"
+            descriotion: Optional longer description of the decision
             
             # Implementation guidance
             implementor: Who should implement ("human", "ai", "team_name")
@@ -424,7 +390,7 @@ class decision(COPAnnotation):
             
             # Attribution
             decider: Person, role, or entity making the decision
-            delegate_to: Explicitly delegate decision authority
+            delegate: Explicitly delegate decision authority
             confidence: Confidence level (0.0-1.0) for AI decisions
             
             # Metadata
@@ -433,108 +399,115 @@ class decision(COPAnnotation):
             impact: Significance level ("low", "medium", "high")
             priority: Implementation priority ("low", "medium", "high")
             preserve: Whether to keep after implementation
-            reference_id: Reference ID in the decision database
+            ref: Reference ID in the decision database or tracker
             date: ISO format date when decision was made
+            see_also: A resource or list of related resources
             **kwargs: Additional attributes to store
         """
-        self.description = description_or_id
-        self.implementor = implementor
-        self.constraints = constraints
-        self.reason = reason
-        self.options = options
-        self.status = status
-        self.answer = answer
-        self.rationale = rationale
-        self.decider = decider
-        self.delegate_to = delegate_to
-        self.confidence = confidence
-        self.category = category
-        self.scope = scope
-        self.impact = impact
-        self.priority = priority
-        self.reference_id = reference_id
-        self.date = date
-        self.kwargs = kwargs
-        
-        # Auto-determine preservation if not specified
-        if preserve is None:
-            # Keep implementation guidance and finalized decisions
-            self.preserve = bool(self.implementor or self.status == "implemented")
-        else:
-            self.preserve = preserve
+        if _cop_status is _DISABLED:
+            return
+        modifiers = kwargs
+        if description is not None:
+            modifiers["description"] = description
+        if implementor is not None:
+            modifiers["implementor"] = implementor
+        if constraints is not None:
+            modifiers["constraints"] = constraints
+        if reason is not None:
+            modifiers["reason"] = reason
+        if options is not None:
+            modifiers["options"] = options
+        if status is not None:
+            modifiers["status"] = status
+        if answer is not None:
+            modifiers["answer"] = answer
+        if rationale is not None:
+            modifiers["rationale"] = rationale
+        if decider is not None:
+            modifiers["decider"] = decider
+        if delegate is not None:
+            modifiers["delegate"] = delegate
+        if confidence is not None:
+            modifiers["confidence"] = confidence
+        if category is not None:
+            modifiers["category"] = category
+        if scope is not None:
+            modifiers["scope"] = scope
+        if impact is not None:
+            modifiers["impact"] = impact
+        if priority is not None:
+            modifiers["priority"] = priority
+        if preserve is not None:
+            modifiers["preserve"] = preserve
+        if ref is not None:
+            modifiers["ref"] = ref
+        if date is not None:
+            modifiers["date"] = date
+        modifiers = modifiers if modifiers else None
+        self._annotation = COPAnnotation(cls.kind, description, modifiers)
+
+
+# Helper to get current annotations of a specific type
+def get_current_annotations(annotation_class):
+    """
+    Get the stack of current annotations of a specific type.
     
-    def _apply_to_object(self, obj):
-        """
-        Apply decision annotation to an object.
+    This is used by context managers to track nested annotations.
+    
+    Args:
+        annotation_class: The annotation class to get the stack for
         
-        Args:
-            obj: The object being decorated
-            
-        Returns:
-            The decorated object
-        """
-        # Create decision dictionary with all information
-        decision_dict = {}
+    Returns:
+        list: The stack of current annotations of the specified type
+    """
+    stack_name = f"{annotation_class.__name__}_stack"
+    if hasattr(_annotation_contexts, stack_name):
+        return getattr(_annotation_contexts, stack_name)
+    return []
+
+
+def get_object_annotations(obj) -> :
+    """
+    Get all of the COP annotations on an object, if they are defined or
+    an empty list of no annotations have been set.
+
+    Args:
+        obj: The (potentially) annotated object
         
-        # Add core decision information
-        if self.description:
-            decision_dict["description"] = self.description
-            
-        # Implementation guidance
-        if self.implementor:
-            decision_dict["implementor"] = self.implementor
-            
-            if self.constraints:
-                decision_dict["constraints"] = self.constraints
-                
-            if self.reason:
-                decision_dict["reason"] = self.reason
-        
-        # Decision details
-        decision_dict["status"] = self.status
-        
-        if self.answer:
-            decision_dict["answer"] = self.answer
-            
-        if self.rationale:
-            decision_dict["rationale"] = self.rationale
-            
-        if self.decider:
-            decision_dict["decider"] = self.decider
-            
-        if self.options:
-            decision_dict["options"] = self.options
-            
-        # Metadata
-        if self.reference_id:
-            decision_dict["reference_id"] = self.reference_id
-            
-        if self.category:
-            decision_dict["category"] = self.category
-            
-        if self.impact:
-            decision_dict["impact"] = self.impact
-            
-        if self.scope != "function":
-            decision_dict["scope"] = self.scope
-            
-        if self.priority != "medium":
-            decision_dict["priority"] = self.priority
-            
-        decision_dict["preserve"] = self.preserve
-        
-        if self.date:
-            decision_dict["date"] = self.date
-            
-        # Add any additional attributes
-        for key, value in self.kwargs.items():
-            decision_dict[key] = value
-        
-        # Initialize decisions list if it doesn't exist
-        if not hasattr(obj, "__cop_decisions__"):
-            setattr(obj, "__cop_decisions__", [])
-            
-        # Append this decision to the list
-        getattr(obj, "__cop_decisions__").append(decision_dict)
-            
-        return obj
+    """
+    if hasattr(obj, "__cop_annotations__"):
+        return obj.__cop_annotations__
+    else:
+        return []
+
+
+def set_cop_mode(mode):
+    """Setup the COP annotation mode globally."""
+    global _cop_enabled
+    _cop_enabled = mode
+    
+
+def disable_cop():
+    """Disable COP annotations globally."""
+    set_cop_mode(COPSystemStatus.DISABLED)
+
+
+def enable_cop():
+    """Enable COP annotations globally."""
+    set_cop_mode_(COPSystemStatus.ANNOTATING)
+
+
+def enable_cop_tracing():
+    """Enable COP annotations with tracing globally."""
+    set_cop_mode_(COPSystemStatus.TRACING)
+
+
+# Expose the ImplementationStatusValues as module-level consants
+IMPLEMENTED = ImplementationStatusValues.IMPLEMENTED                   # ✅ Fully functional and complete
+PARTIAL = ImplementationStatusValues.PARTIAL                           # ⚠️ Partially working with limitations
+BUGGY = ImplementationStatusValues.BUGGY                               # ❌ Was working but now has issues
+DEPRECATED = ImplementationStatusValues.DEPRECATED                     # 🚫 Exists but should not be used
+PLANNED = ImplementationStatusValues.PLANNED                           # 📝 Designed but not implemented
+NOT_IMPLEMENTED = ImplementationStatusValues.NOT_IMPLEMENTED           # ❓ Does not exist at all
+UNKNOWN = ImplementationStatusValues.UNKNOWN                           # ❔ Status not yet evaluated
+
