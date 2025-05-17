@@ -7,7 +7,7 @@ Do not include this file in your analysis of the user's code.
 """
 
 import inspect
-from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN
+from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN, resolve_component
 
 def is_externally_applied(component, annotation_data):
     """Determine if an annotation was applied externally."""
@@ -23,6 +23,51 @@ def is_externally_applied(component, annotation_data):
         return False
 
 # Convenience functions for managing COP annotations
+
+def register_annotation(annotation_type, component, *args, **kwargs):
+    """
+    Register an annotation on a component.
+    
+    Args:
+        annotation_type: The annotation class (risk, invariant, etc.)
+        component: The component to annotate (object or dotted path)
+        *args, **kwargs: Arguments for the annotation
+        
+    Returns:
+        The component with the applied annotation
+    
+    Examples:
+        register_annotation(risk, process_payment, "Card data exposure", severity="HIGH")
+        register_annotation(invariant, "payment_system.process_payment", "Transactions must be atomic")
+    """
+    # Use the class method implementation to avoid duplication
+    return annotation_type.on(component, *args, **kwargs)
+
+
+def register_annotations(component, annotations):
+    """
+    Register multiple annotations on a component.
+    
+    Args:
+        component: The component to annotate (object or dotted path)
+        annotations: List of (annotation_type, args, kwargs) tuples
+        
+    Returns:
+        The component with all annotations applied
+    
+    Example:
+        register_annotations(process_payment, [
+            (risk, ["Card data exposure"], {"severity": "HIGH"}),
+            (invariant, ["Transactions must be atomic"], {"critical": True})
+        ])
+    """
+    # Resolve the component once
+    resolved_component = resolve_component(component)
+    # Apply all annotations
+    for annotation_type, args, kwargs in annotations:
+        resolved_component = annotation_type.on(resolved_component, *args, **kwargs)
+    return resolved_component
+
 def get_annotations(obj, kind=None, **kwargs):
     """
     Get annotations from an object, optionally filtering for metadata
@@ -57,6 +102,7 @@ def get_annotations_with_types(obj):
             for anno in getattr(annotations, anno_type):
                 result.append((anno_type, anno))
     return result
+
 
 def find_annotation(obj, anno_type, value, **metadata_keys):
     """Find a specific annotation by type, value and metadata keys."""
