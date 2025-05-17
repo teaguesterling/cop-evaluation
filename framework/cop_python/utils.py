@@ -33,6 +33,34 @@ def get_annotations(obj, kind=None, **kwargs):
     return selected
 
 
+def get_annotations_with_types(obj):
+    """Get all annotations with their types included."""
+    result = []
+    annotations = getattr(obj, "__cop_annotations__", None)
+    if annotations:
+        for anno_type in dir(annotations):
+            if anno_type.startswith('_'):
+                continue
+            for anno in getattr(annotations, anno_type):
+                result.append((anno_type, anno))
+    return result
+
+def find_annotation(obj, anno_type, value, **metadata_keys):
+    """Find a specific annotation by type, value and metadata keys."""
+    annotations = get_annotations(obj, anno_type)
+    for anno in annotations:
+        if anno.value == value:
+            # Check metadata keys match
+            match = True
+            for key, val in metadata_keys.items():
+                if anno.metadata.get(key) != val:
+                    match = False
+                    break
+            if match:
+                return anno
+    return None
+
+
 def get_implementation_status(obj, default=UNKNOWN):
     """
     Get the implementation status of an object.
@@ -203,4 +231,22 @@ def find_components(module, status=(UNKNOWN, NOT_IMPLEMENTED)):
                 "annotations": annotations._asdict(),
             })
     return components
+
+
+class COPAnnotationReference(NamedTuple):
+    """Reference to a specific annotation on a component."""
+    annotation_type: str                    # The type (risk, invariant, etc.)
+    annotation_value: Optional[str] = None  # Primary value
+    metadata_keys: Dict[str, Any] = {}      # Key metadata to uniquely identify
+    
+    def resolve(self, component):
+        """Resolve this reference to an actual annotation."""
+        return find_annotation(
+            component, 
+            self.annotation_type, 
+            self.annotation_value, 
+            **self.metadata_keys
+        )
+
+
 
