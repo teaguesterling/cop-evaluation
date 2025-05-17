@@ -13,6 +13,16 @@ from enum import Enum
 from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union
 
 
+class COPError(Exception):
+    """Base class for all COP-related exceptions."""
+    pass
+
+
+class DuplicateAnnotationError(COPError, ValueError):
+    """Raised when attempting to add a duplicate annotation of a unique type."""
+    pass
+
+
 class SourceInfo(NamedTuple):
     """Source code location information."""
     file: str                      # Source file path
@@ -33,6 +43,9 @@ class COPAnnotationData(NamedTuple):
         if self.source_info:
             result["source_info"] = self.source_info._asdict()            
         return result
+
+    def __str__(self) -> str:
+        return self.value or ""
 
 
 class DefaultNamespace:
@@ -351,35 +364,19 @@ class COPAnnotation:
             COPAnnotationData object with annotation details
         """
         value = self.args[0] if self.args else None
-        return COPAnnotationData(
-            value=value,
-            metadata=self.kwargs,
-            source_info=self._source_info
-        )
-        
-        # If tracing is enabled, capture source information
-        if _cop_system.mode is COPSystemMode.TRACE:
-            frame = inspect.currentframe().f_back
-            self._source_info = {
-                "file": frame.f_code.co_filename,
-                "line": frame.f_lineno,
-                "function": frame.f_code.co_name
-            }
-    
-    def _create_annotation_data(self) -> COPAnnotationData:
-        """
-        Create a structured annotation data object.
-        
-        Returns:
-            COPAnnotationData object with annotation details
-        """
-        value = self.args[0] if self.args else None
         metadata = self.kwargs if self.kwargs is not None else None
         return COPAnnotationData(
             value=value,
             metadata=metadata,
             source_info=self._source_info
         )
+
+    def _register_annotation(self, obj):
+        # Initialize annotations namespace if needed
+        if not hasattr(obj, "__cop_annotations__"):
+            setattr(obj, "__cop_annotations__", COPAnnotations())
+        annotations = getattr(obj, "__cop_annotations__")[self.kind]
+        annotations.append(annotation_data)
     
     def __call__(self, obj):
         """
@@ -393,17 +390,7 @@ class COPAnnotation:
         """
         if _cop_system.mode is COPSystemMode.DISABLED:
             return obj
-        
-        # Initialize annotations namespace if needed
-        if not hasattr(obj, "__cop_annotations__"):
-            setattr(obj, "__cop_annotations__", COPAnnotations())
-        
-        annotations = getattr(obj, "__cop_annotations__")
-        
-        # Add the annotation data
-        annotation_data = self._create_annotation_data()
-        getattr(annotations, self.kind).append(annotation_data)
-        
+        self._register_annotation(obj)
         return obj
     
     def __enter__(self):
@@ -434,7 +421,17 @@ class COPAnnotation:
         return False  # Don't suppress exceptions
 
 
-class intent(COPAnnotation):
+class COPSingletonAnnotation(COPAnnotation):
+    def _register_annotation(self, obj):
+        super()._register_annotation(obj)
+        annotations = getattr(obj, "__cop_annotations__")[self.kind]
+        if len(annotations) > 1:
+            raise DuplicateAnnotationError(
+                f"No more than one {self.kind} COP annotation can be added to {obj.__name__}"
+            )
+            
+
+class intent(COPSingletonAnnotation):
     """
     Document the intended purpose of a component.
     
@@ -466,7 +463,7 @@ class intent(COPAnnotation):
         super().__init__(description)
 
 
-class implementation_status(COPAnnotation):
+class implementation_status(COPSingletonAnnotation):
     """
     Explicitly mark component implementation status.
     
@@ -748,98 +745,7 @@ class decision(COPAnnotation):
         metadata.update(kwargs)
         
         super().__init__(brief, **metadata)
-
-
-# Convenience functions for managing COP annotations
-def get_annotations(obj, kind=None):
-    """
-    Get annotations from an object.
-    
-    Args:
-        obj: The annotated object
-        kind: Optional annotation kind to retrieve
-        
-    Returns:
-        List of annotations of the specified kind, or entire namespace
-    """
-    if not hasattr(obj, "__cop_annotations__"):
-        return [] if kind else COPAnnotations()
-    
-    annotations = getattr(obj, "__cop_annotations__")
-    
-    if kind is not None:
-        return getattr(annotations, kind)
-    
-    return annotations
-
-
-def get_implementation_status(obj):
-    """
-    Get the implementation status of an object.
-    
-    Args:
-        obj: The annotated object
-        
-    Returns:
-        The implementation status value, or "implemented" if not specified
-    """
-    annotations = get_annotations(obj)
-    status_annotations = annotations.implementation_status
-    
-    if status_annotations:
-        return status_annotations[0].value
-        
-    return "implemented"  # Default assumption
-
-
-def get_intent(obj):
-    """
-    Get the intent of an object.
-    
-    Args:
-        obj: The annotated object
-        
-    Returns:
-        The intent description, or None if not specified
-    """
-    annotations = get_annotations(obj)
-    intent_annotations = annotations.intent
-    
-    if intent_annotations:
-        return intent_annotations[0].value
-        
-    return None
-
-
-def has_annotation(obj, kind, value=None):
-    """
-    Check if an object has a specific annotation.
-    
-    Args:
-        obj: The object to check
-        kind: The annotation kind to look for
-        value: Optional specific value to match
-    """
-    annotations = get_annotations(obj, kind)
-    
-    if value is not None:
-        return any(anno.value == value for anno in annotations)
-    
-    return bool(annotations)
-
-
-def get_current_annotations(annotation_class):
-    """
-    Get the stack of current annotations of a specific type.
-    
-    Args:
-        annotation_class: The annotation class to get the stack for
-        
-    Returns:
-        List of current annotations of the specified type
-    """
-    return _cop_system.get_contexts(annotation_class.kind)
-
+                     
 
 _cop_system = StandardCOPSystem()
 
