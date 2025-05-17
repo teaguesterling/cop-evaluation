@@ -11,7 +11,7 @@ import threading
 import datetime
 from enum import Enum
 from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union
-from .runtime import _current_system, DISABLED, resolve_component
+from .runtime import _current_system, DISABLED, resolve_concept
 
 
 class COPError(Exception):
@@ -232,25 +232,25 @@ class COPAnnotation:
             return self
         return False  # Don't suppress exceptions
 
-    def on(cls, component, *args, **kwargs):
+    def on(cls, concept, *args, **kwargs):
         """
-        Apply an annotation to a component externally.
+        Apply an annotation to a concept externally.
         
-        This method allows applying annotations to components from
+        This method allows applying annotations to concepts from
         outside their definition, enabling externalized annotation.
         
         Args:
-            component: The component to annotate
+            concept: The concept to annotate
             *args, **kwargs: Arguments for the annotation
             
         Returns:
-            The component with the applied annotation
+            The concept with the applied annotation
         """
         # Create the annotation
         annotation = cls(*args, **kwargs)
-        resolved_component = resolve_component(component)
-        annotated_component = annotation(resolved_component)
-        return annotated_component
+        resolved_concept = resolve_concept(concept)
+        annotated_concept = annotation(resolved_concept)
+        return annotated_concept
 
 
 class COPSingletonAnnotation(COPAnnotation):
@@ -263,9 +263,9 @@ class COPSingletonAnnotation(COPAnnotation):
 
 class intent(COPSingletonAnnotation):
     """
-    Document the intended purpose of a component.
+    Document the intended purpose of a concept.
     
-    This decorator captures what a component is supposed to do,
+    This decorator captures what a concept is supposed to do,
     separate from its actual implementation.
     
     Examples:
@@ -295,7 +295,7 @@ class intent(COPSingletonAnnotation):
 
 class implementation_status(COPSingletonAnnotation):
     """
-    Explicitly mark component implementation status.
+    Explicitly mark concept implementation status.
     
     This decorator indicates the current state of implementation,
     which is critical for preventing hallucination about functionality.
