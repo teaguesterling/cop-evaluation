@@ -87,7 +87,7 @@ class DefaultNamespace:
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
 
-class COPAnnotations(DefaultNamespace):
+class COPNamespace(DefaultNamespace):
     """Enhanced namespace for COP annotations with mapping support."""
     
     def __init__(self):
@@ -101,7 +101,7 @@ class COPAnnotations(DefaultNamespace):
         def __setitem__(self, key, value):
         """Prevent dictionary-style assignment."""
         raise TypeError(
-            f"Dictionary-style assignment not supported for COPAnnotations. "
+            f"Dictionary-style assignment not supported for COPNamespace. "
             f"Use attribute style instead: annotations.{key} = {value!r}"
         )
     
@@ -374,7 +374,7 @@ class COPAnnotation:
     def _register_annotation(self, obj):
         # Initialize annotations namespace if needed
         if not hasattr(obj, "__cop_annotations__"):
-            setattr(obj, "__cop_annotations__", COPAnnotations())
+            setattr(obj, "__cop_annotations__", COPNamespace())
         annotations = getattr(obj, "__cop_annotations__")[self.kind]
         annotations.append(annotation_data)
     
