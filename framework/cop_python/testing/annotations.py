@@ -1,39 +1,177 @@
-# cop_python/testing/annotations.py
+"""
+Enhanced COP annotations with testing capabilities.
+
+This module provides testing extensions to core COP annotations,
+allowing them to be used for test verification and externalized definitions.
+"""
+
 import functools
-from typing import Any, Optional, Type, Dict
-from ..core import (
-    COPAnnotation, 
-    intent as core_intent,
-    implementation_status as core_implementation_status,
-    risk as core_risk,
-    invariant as core_invariant,
-    decision as core_decision
-)
+import inspect
+import threading
+import types
+from typing import Any, Optional, Dict, List, NamedTuple, Type, Callable, Union
+from .. import core
+from ..utils import get_annotations
 
-# Define exception classes here so we don't need a separate exceptions.py
-class COPAnnotationViolation(AssertionError):
-    """Base class for all COP annotation violations."""
-    pass
+# Thread-local for tracking current test context
+_test_context = threading.local()
 
-class InvariantViolation(COPAnnotationViolation):
-    """Raised when an invariant is violated."""
-    pass
+def set_current_component(component):
+    """Set current component being tested."""
+    _test_context.current_component = component
 
-class SecurityRiskViolation(COPAnnotationViolation):
-    """Raised when a security requirement is violated."""
-    pass
+def get_current_component():
+    """Get current component being tested."""
+    return getattr(_test_context, "current_component", None)
 
-class ImplementationStatusMismatch(COPAnnotationViolation):
-    """Raised when implementation status doesn't match reality."""
-    pass
+def set_current_annotation_type(annotation_type):
+    """Set current annotation type being tested."""
+    _test_context.current_annotation_type = annotation_type
 
-class DecisionViolation(COPAnnotationViolation):
-    """Raised when a decision implementation is violated."""
-    pass
+def get_current_annotation_type():
+    """Get current annotation type being tested."""
+    return getattr(_test_context, "current_annotation_type", None)
 
-class IntentViolation(COPAnnotationViolation):
-    """Raised when code doesn't fulfill its intent."""
-    pass
+## Test Data
+
+class COPTestData(NamedTuple):
+    """Structured representation of a COP test."""
+    test_id: str                            # Fully qualified test identifier (module.class.method)
+    annotation_value: Optional[str] = None  # Value of the annotation being tested
+    annotation_metadata: Optional[Dict[str, Any]] = None  # Annotation properties
+    test_metadata: Optional[Dict[str, Any]] = None  # Test-specific metadata
+    externalized: bool = False              # Whether test link was defined outside component
+    last_run: Optional[str] = None          # Timestamp of last execution
+    result: Optional[str] = None            # Result of last execution (PASS/FAIL)
+    source_info: Optional[Any] = None       # Source location information
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert test data to dictionary format for serialization."""
+        result = self._asdict()
+        if self.source_info:
+            result["source_info"] = self.source_info._asdict()
+        return result
+
+
+def _add_test_record(component, test_func, annotation_type, annotation_value=None, annotation_metadata=None, test_metadata=None, externalized=False):
+    """
+    Add a test record to a component's __cop_tests__ structure.
+    
+    Args:
+        component: The component being tested
+        test_func: The test function
+        annotation_type: Type of annotation being tested (e.g., "risk", "invariant")
+        annotation_value: Value of the annotation being tested
+        annotation_metadata: Additional annotation metadata
+        test_metadata: Test-specific metadata
+        externalized: Whether the test link was defined outside the component
+        
+    Returns:
+        COPTestData object representing the created test record
+    """
+    # Ensure component has a __cop_tests__ attribute
+    if not hasattr(component, "__cop_tests__"):
+        setattr(component, "__cop_tests__", COPNamespace())
+    # Get module and name info for test identification
+    module_name = test_func.__module__
+    func_name = test_func.__name__
+    
+    # Handle class methods by checking for class attribute
+    if hasattr(test_func, "__self__") and test_func.__self__ is not None:
+        class_name = test_func.__self__.__class__.__name__
+        test_id = f"{module_name}.{class_name}.{func_name}"
+    else:
+        test_id = f"{module_name}.{func_name}"
+    # Create test record
+    test_record = COPTestData(
+        test_id=test_id,
+        annotation_value=annotation_value,
+        annotation_metadata=annotation_metadata or {},
+        test_metadata=test_metadata or {},
+        externalized=externalized,
+        last_run=None,
+        result=None
+    )
+    # Get list for this annotation type
+    tests_list = getattr(component.__cop_tests__, annotation_type)    
+    # Add new record if not found
+    tests_list.append(test_record)
+    return test_record
+
+
+## Verification Data
+
+class COPTestVerification(NamedTuple):
+    """Structured representation of what a test verifies."""
+    component: Any                         # Component being tested
+    component_name: str                    # Component name for reference
+    annotation_type: str                   # Type of annotation being tested
+    annotation_value: Optional[str] = None  # Value of the annotation being tested
+    annotation_metadata: Optional[Dict[str, Any]] = None  # Annotation properties
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        result = self._asdict()
+        # Remove the actual component object for serialization
+        result.pop("component", None)
+        return result
+
+# Helper functions for test information
+
+
+
+# Use utility functions for test info operations
+def _get_or_create_test_info(test_func_or_class):
+    """Get or create the test info namespace for a test function or class."""
+    if not hasattr(test_func_or_class, "__cop_test_info__"):
+        test_info = COPNamespace(verifications=[], metadata={})
+        setattr(test_func_or_class, "__cop_test_info__", test_info)
+    return getattr(test_func_or_class, "__cop_test_info__")
+
+
+def _add_verification(test_info, component, annotation_type, annotation_value=None, annotation_metadata=None):
+    """Add a verification entry to a test info namespace."""
+    component_name = getattr(component, "__name__", str(component))    
+    verification = COPTestVerification(
+        component=component,
+        component_name=component_name,
+        annotation_type=annotation_type,
+        annotation_value=annotation_value,
+        annotation_metadata=annotation_metadata or {}
+    )
+    test_info.verifications.append(verification)
+    return verification
+
+
+def _get_verifications(test_info, component=None, component_name=None, annotation_type=None):
+    """Get verifications from a test info namespace, filtered by component and/or annotation type."""
+    if not hasattr(test_info, "verifications"):
+        return []
+        
+    result = test_info.verifications
+    if component:
+        result = [v for v in result if v.component is component]
+    if component_name:
+        result = [v for v in result if v.component_name == component_name]
+    if annotation_type:
+        result = [v for v in result if v.annotation_type == annotation_type]
+    
+    return result
+
+
+def _record_test_execution(test_func, component, annotation_type):
+    """Record that a test was executed."""
+    # Implementation would store execution information
+    # This could update the last_run and result fields of the test record
+    from .verification import register_test_execution
+    register_test_execution(test_func, component, annotation_type)
+
+
+def _record_verification_failure(annotation_type, args, kwargs, exception):
+    """Record a verification failure."""
+    # Implementation would store information about the failure
+    from .verification import register_verification_failure
+    register_verification_failure(annotation_type, args, kwargs, exception)
 
 
 class COPAnnotationTestingMixin:
@@ -51,30 +189,140 @@ class COPAnnotationTestingMixin:
         Returns:
             A decorator function for test methods
         """
+        annotation_type = cls.kind
+        annotation_value = args[0] if args else None
+        
         def decorator(test_func):
-            # Store annotation parameters on the test function
-            attr_name = f"__cop_verifies_{cls.__name__}__"
-            verification_info = {
-                "args": args,
-                "kwargs": kwargs,
-                "annotation_type": cls.__name__,
-                "component": component,
-                "component_name": getattr(component, "__name__", str(component))
-            }
-            setattr(test_func, attr_name, verification_info)
-            
+            # Get or create test info
+            test_info = _get_or_create_test_info(test_func)            
+            # Add verification
+            test_info.add_verification(
+                component=component,
+                annotation_type=annotation_type,
+                annotation_value=annotation_value,
+                annotation_metadata=kwargs
+            )
+            # Add test record to component
+            _add_test_record(
+                component=component,
+                test_func=test_func,
+                annotation_type=annotation_type,
+                annotation_value=annotation_value,
+                annotation_metadata=kwargs,
+                externalized=False
+            )
             @functools.wraps(test_func)
             def wrapper(*test_args, **test_kwargs):
-                # Run the test
                 result = test_func(*test_args, **test_kwargs)
-                
-                # Record test execution for verification tracking
-                _record_test_verification(test_func, verification_info)
-                
+                _record_test_execution(test_func, component, annotation_type)
                 return result
-            
             return wrapper
+        return decorator
+    
+    @classmethod
+    def test(cls, *args, **kwargs):
+        """
+        Test decorator that retrieves component from context.
         
+        This decorator is used within a test class decorated with @tests_component.
+        
+        Args:
+            *args, **kwargs: Arguments matching the annotation being tested
+            
+        Returns:
+            A decorator function for test methods
+        """
+        annotation_type = cls.kind
+        annotation_value = args[0] if args else None
+        
+        def decorator(test_func):
+            # Get or create test info
+            test_info = _get_or_create_test_info(test_func)
+            
+            @functools.wraps(test_func)
+            def wrapper(self, *test_args, **test_kwargs):
+                # Get component from self or context
+                component = getattr(self, "component", get_current_component())
+                if component:
+                    # Add verification to test info
+                    test_info.add_verification(
+                        component=component,
+                        annotation_type=annotation_type,
+                        annotation_value=annotation_value,
+                        annotation_metadata=kwargs
+                    )
+                    # Add test record to component
+                    _add_test_record(
+                        component=component,
+                        test_func=test_func,
+                        annotation_type=annotation_type,
+                        annotation_value=annotation_value,
+                        annotation_metadata=kwargs,
+                        externalized=False
+                    )
+                    # Record test execution
+                    _record_test_execution(test_func, component, annotation_type)
+                
+                # Run the test
+                return test_func(self, *test_args, **test_kwargs)
+            return wrapper
+        return decorator
+    
+    @classmethod
+    def test_suite(cls, *args, **kwargs):
+        """
+        Create a test suite for this annotation type.
+        
+        Args:
+            *args, **kwargs: Arguments for filtering or categorizing tests
+            
+        Returns:
+            A decorator function for test classes
+        """
+        annotation_type = cls.__name__
+        def decorator(test_class):
+            # Store annotation type info on the class
+            test_info = _get_or_create_test_info(test_class)
+            test_info.annotation_type = annotation_type
+            test_info.annotation_args = args
+            test_info.annotation_kwargs = kwargs
+            # Wrap setUp method to set context
+            original_setUp = getattr(test_class, "setUp", None)
+            def setUp(self):
+                if original_setUp:
+                    original_setUp(self)
+                # Set annotation type context
+                set_current_annotation_type(annotation_type)
+                # Make annotation parameters available
+                self.annotation_type = annotation_type
+                self.annotation_args = args
+                self.annotation_kwargs = kwargs
+                # Get component from parent class if available
+                parent_class = self.__class__
+                while parent_class:
+                    if hasattr(parent_class, "__cop_test_info__"):
+                        parent_info = getattr(parent_class, "__cop_test_info__")
+                        for v in parent_info.verifies:
+                            if v.component:
+                                self.component = v.component
+                                break
+                    # Try parent class
+                    parent_class = parent_class.__base__
+                    if parent_class is object:
+                        break
+            # Set the setUp method
+            test_class.setUp = setUp
+            # Wrap tearDown to clear context
+            original_tearDown = getattr(test_class, "tearDown", None)
+            
+            def tearDown(self):
+                if original_tearDown:
+                    original_tearDown(self)
+                # Clear annotation type context
+                set_current_annotation_type(None)
+            # Set the tearDown method
+            test_class.tearDown = tearDown
+            return test_class
         return decorator
     
     @classmethod
@@ -94,24 +342,19 @@ class COPAnnotationTestingMixin:
         """
         # Create the annotation
         annotation = cls(*args, **kwargs)
-        
         # Apply it to the component
         component = annotation._apply_to_object(component)
-        
         # Mark this as an externalized annotation
-        attr_name = f"__cop_{cls.__name__}s__"
-        if hasattr(component, attr_name):
-            annotations = getattr(component, attr_name)
-            if isinstance(annotations, list):
-                # Find the last added annotation (the one we just added)
-                if annotations:
-                    annotations[-1]["externalized"] = True
-            elif annotations:
-                # Convert to dict if not already
-                if not isinstance(annotations, dict):
-                    annotations = {"value": annotations}
-                annotations["externalized"] = True
-                setattr(component, attr_name, annotations)
+        annotations = get_annotations(component)
+        anno_type = cls.kind
+        
+        if hasattr(annotations, anno_type):
+            anno_list = getattr(annotations, anno_type)
+            
+            # Mark the most recently added annotation
+            if anno_list and hasattr(anno_list[-1], "metadata"):
+                metadata = anno_list[-1].metadata or {}
+                metadata["externalized"] = True
         
         return component
     
@@ -120,409 +363,256 @@ class COPAnnotationTestingMixin:
         """
         Create a context manager for verifying an annotation during a test.
         
-        This method returns a context manager that can be used in a 'with'
-        statement to verify that a specific annotation is maintained during
-        the enclosed code block.
-        
+        Args:
+            *args, **kwargs: Arguments matching the annotation being tested
+            
         Returns:
             A context manager for verification
         """
-        # Create the annotation
-        annotation = cls(*args, **kwargs)
+        annotation_type = cls.kind
+        annotation_value = args[0] if args else None
         
-        # The context manager will track when this annotation is active
         class VerificationContext:
-            def __enter__(self):
-                annotation._enter_context()
+            def __init__(self):
+                self.component = None
+            
+            def for_component(self, component):
+                """Specify the component being verified."""
+                self.component = component
                 return self
                 
-            def __exit__(self, exc_type, exc_val, exc_tb):
-                # Check if the verification was successful
-                if exc_type is not None:
-                    # An exception occurred - check if it's a test assertion
-                    if issubclass(exc_type, AssertionError):
-                        # Record the verification failure
-                        _record_verification_failure(cls.__name__, args, kwargs, exc_val)
+            def __enter__(self):
+                # Save current contexts
+                self.prev_annotation_type = get_current_annotation_type()
                 
-                annotation._exit_context()
+                # Set context
+                set_current_annotation_type(annotation_type)
+                
+                # If component is explicitly specified, record it
+                if self.component is None:
+                    self.component = get_current_component()
+                
+                # If we have a component, try to record test info
+                if self.component:
+                    # Get current test function frame
+                    frame = inspect.currentframe().f_back
+                    
+                    # Try to find the test function
+                    while frame:
+                        if frame.f_code.co_name.startswith('test_'):
+                            # Found test function
+                            function_name = frame.f_code.co_name
+                            module_name = frame.f_globals.get('__name__', '')
+                            
+                            # Create a proxy function object to use with _add_test_record
+                            test_func = types.SimpleNamespace()
+                            test_func.__name__ = function_name
+                            test_func.__module__ = module_name
+                            
+                            # Add test record
+                            _add_test_record(
+                                component=self.component,
+                                test_func=test_func,
+                                annotation_type=annotation_type,
+                                annotation_value=annotation_value,
+                                annotation_metadata=kwargs,
+                                externalized=True
+                            )
+                            
+                            break
+                        
+                        frame = frame.f_back
+                
+                return self
+                    
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                # Restore previous context
+                set_current_annotation_type(self.prev_annotation_type)
+                
+                # Check for verification failure
+                if exc_type is not None and issubclass(exc_type, AssertionError):
+                    _record_verification_failure(annotation_type, args, kwargs, exc_val)
+                
                 return False  # Don't suppress exceptions
         
         return VerificationContext()
-    
-    @classmethod
-    def _get_exception_class(cls) -> Type[AssertionError]:
-        """Get the appropriate exception class for this annotation type."""
-        return cls.__cop_assertion_exception__
-    
-    @classmethod
-    def _validate_annotation_exists(cls, message: str, on: Any) -> bool:
-        """Validate that the specified annotation exists on the component."""
-        if not message or not on:
-            return True
-            
-        annotation_type = cls.__name__
-        
-        # Get the appropriate attribute name for this annotation type
-        attr_name = f"__cop_{annotation_type}s__"
-        if annotation_type == "implementation_status":
-            attr_name = f"__cop_{annotation_type}__"
-        
-        # Check if this specific annotation exists on the component
-        if not hasattr(on, attr_name):
-            return False
-            
-        annotations = getattr(on, attr_name)
-        
-        if annotation_type == "implementation_status":
-            # Special case for implementation_status
-            return annotations == message
-        elif isinstance(annotations, list):
-            # List of annotations (invariants, risks, etc.)
-            return any(
-                (isinstance(a, dict) and (
-                    a.get("condition") == message or 
-                    a.get("description") == message or
-                    a.get("question") == message
-                )) or 
-                (isinstance(a, str) and a == message)
-                for a in annotations
-            )
-        
-        return False
-    
-    @classmethod
-    def _build_error_message(cls, message: Optional[str], on: Optional[Any]) -> str:
-        """Build an appropriate error message with component info if available."""
-        annotation_type = cls.__name__
-        
-        component_info = ""
-        if on:
-            component_name = getattr(on, "__name__", str(on))
-            component_info = f" on {component_name}"
-        
-        return message or f"{annotation_type.title()} violation{component_info}"
-    
-    @classmethod
-    def assert_condition(cls, condition: bool, message: Optional[str] = None, *, on: Any = None) -> None:
-        """
-        Assert that a condition related to this annotation type is true.
-        
-        This method creates type-specific assertions that validate conditions
-        related to the annotation type (invariant, risk, etc.).
-        
-        Args:
-            condition: The condition that must be true
-            message: Optional message or specific annotation value to check
-            on: Optional component to validate against
-            
-        Raises:
-            AssertionError: If the condition is false
-        """
-        if not condition:
-            # Optionally validate the annotation exists
-            if on and message:
-                exists = cls._validate_annotation_exists(message, on)
-                if not exists:
-                    # Could log a warning here
-                    pass
-            
-            # Build the error message
-            error_message = cls._build_error_message(message, on)
-            
-            # Get the appropriate exception class
-            exception_class = cls._get_exception_class()
-            
-            # Raise the exception
-            raise exception_class(error_message)
-    
-    # Alias for better readability
-    @classmethod
-    def assertion(cls, condition: bool, message: Optional[str] = None, *, on: Any = None) -> None:
-        """Alias for assert_condition with more natural syntax."""
-        cls.assert_condition(condition, message, on=on)
 
 
-class COPAnnotationInvariantTestingMixin(COPAnnotationTestingMixin):
-    __cop_assertion_exception__ = InvariantViolation
+class testing_component:
+    """
+    Context manager for testing a specific component.
     
-    @classmethod
-    def assert_maintained(cls, condition: bool, invariant_description: str, *, on: Any = None) -> None:
+    Example:
+        with testing_component(process_payment):
+            # Test code that has access to the component
+            with invariant.verify("Transactions must be atomic"):
+                # Test code that verifies the invariant
+    """
+    
+    def __init__(self, component):
         """
-        Assert that an invariant is maintained after operations.
+        Initialize with a component to test.
         
         Args:
-            condition: Whether the invariant holds true
-            invariant_description: Description of the invariant
-            on: Optional component to validate against
+            component: The component to test
         """
-        cls.assert_condition(condition, invariant_description, on=on)
+        self.component = component
+        self.previous_component = None
     
-    @classmethod
-    def assert_violation_raises(cls, expected_exception, callable_obj, *args, invariant_description: str = None, **kwargs):
+    def __enter__(self):
         """
-        Assert that violating an invariant raises the expected exception.
+        Enter the testing context.
+        
+        Returns:
+            The component being tested
+        """
+        # Store the current component
+        self.previous_component = get_current_component()
+        
+        # Set the new component
+        set_current_component(self.component)
+        
+        return self.component
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Exit the testing context.
         
         Args:
-            expected_exception: Exception that should be raised
-            callable_obj: Callable that should raise the exception
-            *args, **kwargs: Arguments to pass to the callable
-            invariant_description: Description of the invariant being tested
+            exc_type: Exception type if an exception was raised, else None
+            exc_value: Exception value if an exception was raised, else None
+            traceback: Exception traceback if an exception was raised, else None
             
-        Raises:
-            AssertionError: If the callable doesn't raise the expected exception
+        Returns:
+            False: Don't suppress exceptions
         """
-        try:
-            callable_obj(*args, **kwargs)
-        except expected_exception:
-            return  # Test passed
-        except Exception as e:
-            raise AssertionError(f"Expected {expected_exception.__name__}, but got {type(e).__name__}: {str(e)}")
+        # Restore the previous component
+        set_current_component(self.previous_component)
         
-        raise AssertionError(f"Expected {expected_exception.__name__} for violating '{invariant_description}', but no exception was raised")
+        return False  # Don't suppress exceptions
 
 
-class COPAnnotationRiskTestingMixin(COPAnnotationTestingMixin):
-    __cop_assertion_exception__ = SecurityRiskViolation
+class tests_component:
+    """
+    Decorator for creating component test classes.
     
-    @classmethod
-    def assert_mitigated(cls, condition: bool, risk_description: str, *, on: Any = None) -> None:
+    Example:
+        @tests_component(process_payment)
+        class ProcessPaymentTests:
+            # All test methods have access to self.component
+    """
+    
+    def __init__(self, component, **kwargs):
         """
-        Assert that a security risk has been mitigated.
+        Initialize with the component to test.
         
         Args:
-            condition: Whether the mitigation is in place
-            risk_description: Description of the risk
-            on: Optional component to validate against
+            component: The component to test
+            **kwargs: Additional metadata for reporting
         """
-        cls.assert_condition(condition, risk_description, on=on)
-
-    @classmethod
-    def assert_prevented(cls, attack_function, *args, risk_description: str = None, **kwargs):
+        self.component = component
+        self.metadata = kwargs
+    
+    def __call__(self, cls):
         """
-        Assert that a security attack is prevented.
+        Apply the decorator to a class.
         
         Args:
-            attack_function: Function that attempts an attack
-            *args, **kwargs: Arguments to pass to the attack function
-            risk_description: Description of the risk being tested
+            cls: The class to decorate
             
-        Raises:
-            AssertionError: If the attack function succeeds
+        Returns:
+            The decorated class
         """
-        try:
-            result = attack_function(*args, **kwargs)
-            raise AssertionError(f"Attack function succeeded when it should have been prevented: {result}")
-        except Exception:
-            # Attack was prevented by raising an exception
-            pass
-    
-    @classmethod
-    def assert_sanitized(cls, value, sanitizer, risk_description: str = None, *, on: Any = None):
-        """
-        Assert that input is properly sanitized.
+        # Add test info to class
+        test_info = _get_or_create_test_info(cls)
+        test_info.add_verification(
+            component=self.component,
+            annotation_type="component_test",
+            annotation_value=None,
+            annotation_metadata=self.metadata
+        )
         
-        Args:
-            value: The potentially dangerous value
-            sanitizer: Function that should sanitize the value
-            risk_description: Description of the risk
-            on: Optional component to validate against
-        """
-        original = str(value)
-        sanitized = sanitizer(value)
+        # Wrap setUp to set component context
+        original_setUp = getattr(cls, "setUp", None)
         
-        if original == sanitized and any(char in original for char in '<>&"\'/'):
-            raise SecurityRiskViolation(f"Input not sanitized: {original}")
-
-
-class COPAnnotationDecisionTestingMixin(COPAnnotationTestingMixin):
-    __cop_assertion_exception__ = DecisionViolation
-    
-    @classmethod
-    def assert_followed(cls, condition: bool, question: str, *, on: Any = None) -> None:
-        """
-        Assert that a decision has been followed correctly.
-        
-        Args:
-            condition: Whether the decision was followed correctly
-            question: The decision question
-            on: Optional component to validate against
-        """
-        cls.assert_condition(condition, question, on=on)
-    
-    @classmethod
-    def assert_constraints_met(cls, constraints: Dict[str, bool], *, on: Any = None) -> None:
-        """
-        Assert that decision constraints have been met.
-        
-        Args:
-            constraints: Dict mapping constraint descriptions to whether they're met
-            on: Optional component to validate against
+        def setUp(self):
+            # Call original setUp if it exists
+            if original_setUp:
+                original_setUp(self)
             
-        Example:
-            decision.assert_constraints_met({
-                "Use Stripe for processing": uses_stripe(payment),
-                "Support refunds": supports_refunds(payment),
-            }, on=process_payment)
-        """
-        mismatches = []
-        for constraint, is_met in constraints.items():
-            if not is_met:
-                mismatches.append(constraint)
+            # Set component context
+            set_current_component(self.component)
+            
+            # Make component available to test methods
+            self.component = self.component
         
-        if mismatches:
-            component_info = ""
-            if on:
-                component_name = getattr(on, "__name__", str(on))
-                component_info = f" in {component_name}"
+        # Wrap tearDown to clear context
+        original_tearDown = getattr(cls, "tearDown", None)
+        
+        def tearDown(self):
+            # Call original tearDown if it exists
+            if original_tearDown:
+                original_tearDown(self)
+            
+            # Clear component context
+            set_current_component(None)
+        
+        # Set methods
+        cls.setUp = setUp
+        cls.tearDown = tearDown
+        
+        # Process inner classes for annotation types
+        for name, inner_cls in cls.__dict__.items():
+            if isinstance(inner_cls, type):
+                # Add test info to inner class
+                inner_test_info = _get_or_create_test_info(inner_cls)
+                inner_test_info.add_verification(
+                    component=self.component,
+                    annotation_type="component_test",
+                    annotation_value=None,
+                    annotation_metadata={}
+                )
                 
-            raise DecisionViolation(
-                f"Decision constraints not met{component_info}:\n" +
-                "\n".join(f"- {constraint}" for constraint in mismatches)
-            )
+                # If the class name indicates an annotation type, link it
+                for anno_type in ["risk", "invariant", "decision", "intent", "implementation_status"]:
+                    if name.lower() == f"{anno_type}tests":
+                        inner_test_info.annotation_type = anno_type
+        
+        return cls
 
 
-class COPAnnotationIntentTestingMixin(COPAnnotationTestingMixin):
-    __cop_assertion_exception__ = IntentViolation
-    
-    @classmethod
-    def assert_fulfilled(cls, condition: bool, intent_description: str, *, on: Any = None) -> None:
-        """
-        Assert that an intent is fulfilled by the implementation.
-        
-        Args:
-            condition: Whether the intent is fulfilled
-            intent_description: Description of the intent
-            on: Optional component to validate against
-        """
-        cls.assert_condition(condition, intent_description, on=on)
-    
-    @classmethod
-    def assert_achieves_goal(cls, goal_achieved: bool, intent_description: str, *, on: Any = None) -> None:
-        """
-        Assert that the code achieves its intended goal.
-        
-        Args:
-            goal_achieved: Whether the intended goal was achieved
-            intent_description: Description of the intent
-            on: Optional component to validate against
-        """
-        cls.assert_condition(goal_achieved, intent_description, on=on)
-
-
-class COPAnnotationImplementationStatusTestingMixin(COPAnnotationTestingMixin):
-    __cop_assertion_exception__ = ImplementationStatusMismatch
-    
-    @classmethod
-    def assert_matches(cls, component: Any, behavior_success: bool) -> None:
-        """
-        Assert that implementation status matches actual behavior.
-        
-        Args:
-            component: The component to check
-            behavior_success: Whether the behavior was successful
-        """
-        status = getattr(component, "__cop_implementation_status__", "implemented")
-        
-        if status in ["implemented", "partial"] and not behavior_success:
-            details = getattr(component, "__cop_implementation_details__", "")
-            details_str = f" ({details})" if details else ""
-            
-            component_name = getattr(component, "__name__", str(component))
-            raise ImplementationStatusMismatch(
-                f"{component_name} is marked as {status}{details_str} but behavior failed"
-            )
-        
-        if status in ["not_implemented", "planned"] and behavior_success:
-            component_name = getattr(component, "__name__", str(component))
-            raise ImplementationStatusMismatch(
-                f"{component_name} is marked as {status} but behavior works"
-            )
-    
-    @classmethod
-    def assert_completeness(cls, component: Any, features: Dict[str, bool]) -> None:
-        """
-        Assert implementation completeness against a set of features.
-        
-        Args:
-            component: The component to check
-            features: Dict mapping feature names to whether they should work
-            
-        Example:
-            implementation_status.assert_completeness(my_component, {
-                "basic_functionality": True,   # Should work
-                "advanced_features": False,    # Should not work yet
-            })
-        """
-        status = getattr(component, "__cop_implementation_status__", "implemented")
-        component_name = getattr(component, "__name__", str(component))
-        
-        mismatches = []
-        for feature, should_work in features.items():
-            try:
-                # Try to use the feature
-                feature_fn = getattr(component, feature, None)
-                if feature_fn is None:
-                    if should_work:
-                        mismatches.append(f"Feature '{feature}' not found but should work")
-                    continue
-                
-                result = feature_fn()
-                works = bool(result)
-                
-                if works != should_work:
-                    mismatches.append(
-                        f"Feature '{feature}' {'works but shouldn't' if works else 'doesn't work but should'}"
-                    )
-            except Exception as e:
-                if should_work:
-                    mismatches.append(f"Feature '{feature}' raised {type(e).__name__} but should work")
-        
-        if mismatches:
-            raise ImplementationStatusMismatch(
-                f"{component_name} (status: {status}) has implementation mismatches:\n" +
-                "\n".join(f"- {mismatch}" for mismatch in mismatches)
-            )
-
-
-def create_cop_testing_subclass(annotation_cls: Type[COPAnnotation], mixin_cls: Type[COPAnnotationTestingMixin]):
+def create_cop_testing_subclass(annotation_cls):
     """
     Create a testing-enhanced subclass of a COP annotation.
     
     Args:
         annotation_cls: The core annotation class to enhance
-        mixin_cls: The testing mixin to apply
         
     Returns:
         A subclass with testing capabilities
     """
-    testing_cls = type(f"{annotation_cls.__name__}", (annotation_cls, mixin_cls), {})
+    class_name = annotation_cls.kind
+    
+    # Create the enhanced class
+    testing_cls = type(class_name, (annotation_cls, COPAnnotationTestingMixin), {})
     
     # Wrap it to preserve signature and docstring
     @functools.wraps(annotation_cls)
     def testing_annotation(*args, **kwargs):
         return testing_cls(*args, **kwargs)
     
+    # Add class methods from the enhanced class
+    for name, method in inspect.getmembers(testing_cls, predicate=inspect.ismethod):
+        if name.startswith('_'):
+            continue
+        setattr(testing_annotation, name, method)
+    
     return testing_annotation
 
 
 # Create testing-enhanced versions of core annotations
-intent = create_cop_testing_subclass(core_intent, COPAnnotationIntentTestingMixin)
-implementation_status = create_cop_testing_subclass(core_implementation_status, COPAnnotationImplementationStatusTestingMixin)
-risk = create_cop_testing_subclass(core_risk, COPAnnotationRiskTestingMixin)
-invariant = create_cop_testing_subclass(core_invariant, COPAnnotationInvariantTestingMixin)
-decision = create_cop_testing_subclass(core_decision, COPAnnotationDecisionTestingMixin)
-
-
-# Helper functions for test tracking
-def _record_test_verification(test_func, verification_info):
-    """Record that a test verified a specific annotation."""
-    # Implementation would store this information in a registry
-    from .verification import register_test_verification
-    register_test_verification(test_func, verification_info)
-
-
-def _record_verification_failure(annotation_type, args, kwargs, exception):
-    """Record a verification failure."""
-    # Implementation would store information about the failure
-    from .verification import register_verification_failure
-    register_verification_failure(annotation_type, args, kwargs, exception)
+intent = create_cop_testing_subclass(core.intent)
+implementation_status = create_cop_testing_subclass(core.implementation_status)
+risk = create_cop_testing_subclass(core.risk)
+invariant = create_cop_testing_subclass(core.invariant)
+decision = create_cop_testing_subclass(core.decision)
