@@ -72,89 +72,133 @@ class COPAnnotations(DefaultNamespace):
         return iter(self.get_all())
 
 
-class COPSystemMode(Enum):
-    """Operating modes for the COP system."""
-    DISABLED = 0    # Bypass adding all COP annotation actions
-    ANNOTATE = 1    # Add COP annotations on decorated components
-    TRACE = 2       # Add COP annotations and enable frame level tracing
+class NoOpCOPSystem:
+    """COP system that does nothing (disabled mode)."""
+    
+    def is_enabled(self) -> bool:
+        """Check if the system is enabled."""
+        return False
+
+    def is_tracing(self) -> bool:
+        """Check if the system is tracing source positions."""
+        return False
+
+    def get_source_info(self, skip_frames: int = 1) -> Optional[Dict]:
+        """Placeholder for source information for the current call site."""
+        return None
+    
+    def push_context(self, context_type: str, context: Any) -> None:
+        """No-op implementation."""
+        pass
+    
+    def pop_context(self, context_type: str) -> None:
+        """No-op implementation."""
+        pass
+    
+    def get_contexts(self, context_type: str) -> List:
+        """Return empty list."""
+        return []
 
 
-class COPSystem:
-    """System for managing COP annotations and contexts."""
+class StandardCOPSystem(NoOpCOPSystem):
+    """Standard COP system implementation."""
     
     def __init__(self):
         """Initialize the COP system."""
-        self.mode = COPSystemMode.ANNOTATE
         self.contexts = threading.local()
-        self.traces = []
     
-    def push_context(self, context_type: str, context) -> None:
-        """
-        Push a context to its stack.
-        
-        Args:
-            context_type: Type of the context
-            context: The context object
-        """
-        # Quick return if disabled
-        if self.mode is COPSystemMode.DISABLED:
-            return
-            
+    def push_context(self, context_type: str, context: Any) -> None:
+        """Push a context to its stack."""
         stack_name = f"{context_type}_stack"
         if not hasattr(self.contexts, stack_name):
             setattr(self.contexts, stack_name, [])
         
         stack = getattr(self.contexts, stack_name)
         stack.append(context)
-        
-        # Add trace if tracing is enabled
-        if self.mode is COPSystemMode.TRACE:
-            frame = inspect.currentframe().f_back.f_back
-            self._add_trace("enter_context", context_type, context, frame)
     
     def pop_context(self, context_type: str) -> None:
-        """
-        Pop a context from its stack.
-        
-        Args:
-            context_type: Type of the context to pop
-        """
-        # Quick return if disabled
-        if self.mode is COPSystemMode.DISABLED:
-            return
-            
+        """Pop a context from its stack."""
         stack_name = f"{context_type}_stack"
         if hasattr(self.contexts, stack_name):
             stack = getattr(self.contexts, stack_name)
             if stack:
-                context = stack.pop()
-                
-                # Add trace if tracing is enabled
-                if self.mode is COPSystemMode.TRACE:
-                    frame = inspect.currentframe().f_back.f_back
-                    self._add_trace("exit_context", context_type, context, frame)
+                stack.pop()
     
     def get_contexts(self, context_type: str) -> List:
-        """
-        Get all contexts of a specific type.
-        
-        Args:
-            context_type: Type of contexts to retrieve
-            
-        Returns:
-            List of contexts of the specified type
-        """
-        # Return empty list if disabled
-        if self.mode == COPSystemMode.DISABLED:
-            return []
-            
+        """Get all contexts of a specific type."""
         stack_name = f"{context_type}_stack"
         if hasattr(self.contexts, stack_name):
             return getattr(self.contexts, stack_name)
         return []
+
+
+class TracingCOPSystem(StandardCOPSystem):
+    """COP system with tracing capabilities."""
+    
+    def __init__(self):
+        """Initialize the tracing COP system."""
+        super().__init__()
+        self.traces = []
+    
+    def is_tracing(self) -> bool:
+        """Check if the system is in tracing mode."""
+        return True
+
+    def get_source_info(self, skip_frames: int = 1) -> Dict:
+        """
+        Get source information for the current call site.
+        
+        Args:
+            skip_frames: Number of frames to skip (default: caller's caller)
+            
+        Returns:
+            Dict with source info
+        """
+        # Get the appropriate frame based on skip_frames
+        frame = inspect.currentframe()
+        for _ in range(skip_frames + 1):  # +1 for this function's frame
+            if frame is None:
+                break
+            frame = frame.f_back
+            
+        if frame is None:
+            return {}
+            
+        # Extract the source info
+        frame_info = inspect.getframeinfo(frame)
+        return {
+            "file": frame_info.filename,
+            "line": frame_info.lineno,
+            "function": frame_info.function
+        }
+    
+    def push_context(self, context_type: str, context: Any) -> None:
+        """Push a context to its stack with tracing."""
+        super().push_context(context_type, context)
+        
+        # Get source info with appropriate frame skipping
+        source_info = self.get_source_info(skip_frames=2)  # Skip push_context and caller
+        self._add_trace("enter_context", context_type, context, source_info)
+    
+    def pop_context(self, context_type: str) -> None:
+        """Pop a context from its stack with tracing."""
+        stack_name = f"{context_type}_stack"
+        context = None
+        
+        if hasattr(self.contexts, stack_name):
+            stack = getattr(self.contexts, stack_name)
+            if stack:
+                context = stack[-1]  # Get the context before popping
+        
+        super().pop_context(context_type)
+        
+        if context:
+            # Get source info with appropriate frame skipping
+            source_info = self.get_source_info(skip_frames=2)  # Skip pop_context and caller
+            self._add_trace("exit_context", context_type, context, source_info)
     
     def _add_trace(self, action: str, annotation_type: str, 
-                  annotation, frame) -> None:
+                  annotation: Any, source_info: Dict) -> None:
         """
         Add a trace entry.
         
@@ -162,21 +206,16 @@ class COPSystem:
             action: Action being performed
             annotation_type: Type of annotation
             annotation: The annotation object
-            frame: Current frame
+            source_info: Source location information
         """
-        # Only trace if in trace mode
-        if self.mode is not COPSystemMode.TRACE:
-            return
-            
-        frame_info = inspect.getframeinfo(frame)
         trace = {
             "action": action,
             "annotation_type": annotation_type,
-            "file": frame_info.filename,
-            "line": frame_info.lineno,
-            "function": frame_info.function,
             "timestamp": datetime.datetime.now().isoformat()
         }
+        
+        # Add source info
+        trace.update(source_info)
         
         # Add annotation details if available
         if hasattr(annotation, "args"):
@@ -186,8 +225,11 @@ class COPSystem:
             
         self.traces.append(trace)
 
-# Global system instance
-_cop_system = COPSystem()
+
+DISABLED = NoOpCOPSystem()
+ENABLED = StandardCOPSystem()
+
+_cop_system = ENABLED
 
 
 class COPAnnotationData(NamedTuple):
@@ -212,12 +254,26 @@ class COPAnnotation:
             **kwargs: Keyword arguments
         """
         # Quick return if disabled
-        if _cop_system.mode is COPSystemMode.DISABLED:
+        if _cop_system.mode is DISABLED:
             return
             
         self.args = args
         self.kwargs = kwargs
-        self._source_info = None
+        self._source_info = _cop_system.get_source_info()
+    
+    def _create_annotation_data(self) -> COPAnnotationData:
+        """
+        Create a structured annotation data object.
+        
+        Returns:
+            COPAnnotationData object with annotation details
+        """
+        value = self.args[0] if self.args else None
+        return COPAnnotationData(
+            value=value,
+            metadata=self.kwargs,
+            source_info=self._source_info
+        )
         
         # If tracing is enabled, capture source information
         if _cop_system.mode is COPSystemMode.TRACE:
@@ -291,7 +347,7 @@ class COPAnnotation:
         Returns:
             False: Don't suppress exceptions
         """
-        if _cop_system.mode is not COPSystemMode.DISABLED:
+        if _cop_system.mode is not DISABLED:
             _cop_system.pop_context(self.kind)
         return False  # Don't suppress exceptions
 
@@ -322,7 +378,7 @@ class intent(COPAnnotation):
             description: Description of the intent
         """
         # Quick return if disabled
-        if _cop_system.mode is COPSystemMode.DISABLED:
+        if _cop_system.mode is DISABLED:
             return
             
         super().__init__(description)
@@ -374,7 +430,7 @@ class implementation_status(COPAnnotation):
             alternative: For DEPRECATED status, what to use instead
         """
         # Quick return if disabled
-        if _cop_system.mode is COPSystemMode.DISABLED:
+        if _cop_system.mode is DISABLED:
             return
             
         kwargs = {}
@@ -418,7 +474,7 @@ class invariant(COPAnnotation):
             scope: When this invariant applies (e.g., "always", "runtime")
         """
         # Quick return if disabled
-        if _cop_system.mode is COPSystemMode.DISABLED:
+        if _cop_system.mode is DISABLED:
             return
             
         kwargs = {
@@ -466,7 +522,7 @@ class risk(COPAnnotation):
             mitigation: Optional strategies that have been implemented
         """
         # Quick return if disabled
-        if _cop_system.mode is COPSystemMode.DISABLED:
+        if _cop_system.mode is DISABLED:
             return
             
         kwargs = {
@@ -515,8 +571,6 @@ class decision(COPAnnotation):
     """
     kind = "decision"
 
-    
-    
     def __init__(self, 
                  # Short and optional longer decision description
                  brief="implementation boundary", description=None,
@@ -568,7 +622,7 @@ class decision(COPAnnotation):
             see_also: A resource or list of related resources
             **kwargs: Additional attributes to store
         """
-        if _cop_system.mode is COPSystemMode.DISABLED:
+        if _cop_system.mode is DISABLED:
             return
         metadata = kwargs
         if description is not None:
@@ -705,21 +759,25 @@ def get_current_annotations(annotation_class):
     return _cop_system.get_contexts(annotation_class.kind)
 
 
-# System mode control functions
+_cop_system = StandardCOPSystem()
+
 def enable_cop():
     """Enable COP annotations."""
-    _cop_system.mode = COPSystemMode.ANNOTATE
-
+    global _cop_system
+    if not isinstance(_cop_system, StandardCOPSystem) or isinstance(_cop_system, TracingCOPSystem):
+        _cop_system = StandardCOPSystem()
 
 def enable_cop_tracing():
     """Enable COP annotations with tracing."""
-    _cop_system.mode = COPSystemMode.TRACE
-
+    global _cop_system
+    if not isinstance(_cop_system, TracingCOPSystem):
+        _cop_system = TracingCOPSystem()
 
 def disable_cop():
     """Disable COP annotations."""
-    _cop_system.mode = COPSystemMode.DISABLED
-
+    global _cop_system
+    if not isinstance(_cop_system, NoOpCOPSystem):
+        _cop_system = DISABLED
 
 # Implementation status constants
 class ImplementationStatusValues(Enum):
