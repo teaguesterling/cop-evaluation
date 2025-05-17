@@ -75,23 +75,50 @@ class DefaultNamespace:
 
 
 class COPAnnotations(DefaultNamespace):
-    """Enhanced namespace for COP annotations."""
+    """Enhanced namespace for COP annotations with mapping support."""
     
     def __init__(self):
         """Initialize with empty lists as defaults."""
         super().__init__(default_factory=list)
     
+    def __getitem__(self, key):
+        """Support dictionary-style access."""
+        return getattr(self, key)
+
+        def __setitem__(self, key, value):
+        """Prevent dictionary-style assignment."""
+        raise TypeError(
+            f"Dictionary-style assignment not supported for COPAnnotations. "
+            f"Use attribute style instead: annotations.{key} = {value!r}"
+        )
+    
+    def __contains__(self, key):
+        """Check if an annotation type exists."""
+        return hasattr(self, key) and (not key.startswith('_')
+    
+    def keys(self):
+        """Get all annotation type names."""
+        return [attr for attr in dir(self) 
+                if not attr.startswith('_') and isinstance(getattr(self, attr), list)]
+    
+    def values(self):
+        """Get all annotation lists."""
+        return [getattr(self, attr) for attr in self.keys()]
+    
+    def items(self):
+        """Get (type, annotations) pairs."""
+        return [(attr, getattr(self, attr)) for attr in self.keys()]
+    
     def get_all(self):
         """Get all annotations as a flat list."""
         result = []
-        for attr_name in vars(self):
-            if not attr_name.startswith('_') and isinstance(getattr(self, attr_name), list):
-                result.extend(getattr(self, attr_name))
+        for value in self.values():
+            result.extend(value)
         return result
     
     def __iter__(self):
-        """Iterate through all annotations."""
-        return iter(self.get_all())
+        """Iterate through annotation type names."""
+        return iter(self.keys())
 
 
 class NoOpCOPSystem:
