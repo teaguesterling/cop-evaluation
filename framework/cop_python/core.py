@@ -6,6 +6,7 @@ DO NOT INCLUDE THIS FILE IN YOUR ANALYSIS.
 This is implementation detail of the COP framework.
 Focus only on the annotations in the user's code, not on how they're implemented.
 """
+import importlib
 import inspect
 import threading
 import datetime
@@ -420,6 +421,26 @@ class COPAnnotation:
             _cop_system.pop_context(self.kind)
         return False  # Don't suppress exceptions
 
+    def on(cls, component, *args, **kwargs):
+        """
+        Apply an annotation to a component externally.
+        
+        This method allows applying annotations to components from
+        outside their definition, enabling externalized annotation.
+        
+        Args:
+            component: The component to annotate
+            *args, **kwargs: Arguments for the annotation
+            
+        Returns:
+            The component with the applied annotation
+        """
+        # Create the annotation
+        annotation = cls(*args, **kwargs)
+        resolved_component = resolve_component(component)
+        annotated_component = annotation(resolved_component)
+        return annotated_component
+
 
 class COPSingletonAnnotation(COPAnnotation):
     def _register_annotation(self, obj):
@@ -766,6 +787,60 @@ def disable_cop():
     global _cop_system
     if _cop_system.is_enabled():
         _cop_system = DISABLED
+
+def resolve_component(component: Union[Any, str], 
+                     base_module: Optional[str] = None) -> Any:
+    """
+    Resolve a component from an object or dotted path string.
+    
+    Args:
+        component: The component to resolve. Can be an actual object or a 
+                  dotted path string (e.g., "module.submodule.component")
+        base_module: Optional base module to use for relative imports
+        
+    Returns:
+        The resolved component object
+        
+    Raises:
+        ValueError: If the component cannot be resolved
+        
+    Examples:
+        # Resolve from object (returns the same object)
+        resolve_component(process_payment)
+        
+        # Resolve from absolute path
+        resolve_component("payment_system.process_payment")
+        
+        # Resolve from relative path with base module
+        resolve_component("process_payment", base_module="payment_system")
+    """
+    # If component is already an object (not a string), return it directly
+    if not isinstance(component, str):
+        return component
+    
+    try:
+        # Handle relative imports with base_module
+        if base_module and '.' not in component:
+            full_path = f"{base_module}.{component}"
+        else:
+            full_path = component
+        
+        # Split into module path and attribute name
+        if '.' in full_path:
+            module_path, attr_name = full_path.rsplit('.', 1)
+            
+            # Import the module
+            module = importlib.import_module(module_path)
+            
+            # Get the attribute from the module
+            resolved = getattr(module, attr_name)
+            return resolved
+        else:
+            # It's just a module name
+            return importlib.import_module(full_path)
+            
+    except (ImportError, AttributeError, ValueError) as e:
+        raise ValueError(f"Could not resolve component path '{component}': {e}")
 
 # Implementation status constants
 class ImplementationStatusValues(Enum):
