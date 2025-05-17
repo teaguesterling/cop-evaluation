@@ -36,20 +36,22 @@ def get_current_annotation_type():
 
 class COPTestData(NamedTuple):
     """Structured representation of a COP test."""
-    test_id: str                                    # Fully qualified test identifier (module.class.method)
-    anootation: Optional[COPAnnotationData] = None  # The COP annotation being tested
-    test_metadata: Optional[Dict[str, Any]] = None  # Test-specific metadata
-    externalized: bool = False                      # Whether test link was defined outside component
-    last_run: Optional[str] = None                  # Timestamp of last execution
-    result: Optional[str] = None                    # Result of last execution (PASS/FAIL)
-    source_info: Optional[Any] = None               # Source location information
+    test_id: str                                           # Fully qualified test identifier
+    annotation_reference: COPAnnotationReference           # Reference to the annotation being tested
+    test_metadata: Optional[Dict[str, Any]] = None         # Test-specific metadata
+    source_info: Optional[SourceInfo] = None               # Source location information of the test
+
+
+def is_externally_linked(test_data, test_func):
+    """Determine if a test was linked externally."""
+    if not test_data.source_info or not hasattr(test_func, "__code__"):
+        return False
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert test data to dictionary format for serialization."""
-        result = self._asdict()
-        if self.source_info:
-            result["source_info"] = self.source_info._asdict()
-        return result
+    test_file = inspect.getfile(test_func)
+    test_line = test_func.__code__.co_firstlineno
+    
+    return (test_data.source_info.file != test_file or 
+            abs(test_data.source_info.line - test_line) > 5)
 
 
 def _add_test_record(component, test_func, annotation_type, annotation_value=None, annotation_metadata=None, test_metadata=None, externalized=False):
