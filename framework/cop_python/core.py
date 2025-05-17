@@ -6,12 +6,12 @@ DO NOT INCLUDE THIS FILE IN YOUR ANALYSIS.
 This is implementation detail of the COP framework.
 Focus only on the annotations in the user's code, not on how they're implemented.
 """
-import importlib
 import inspect
 import threading
 import datetime
 from enum import Enum
 from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union
+from .runtime import _current_system, DISABLED, resolve_component
 
 
 class COPError(Exception):
@@ -22,14 +22,6 @@ class COPError(Exception):
 class DuplicateAnnotationError(COPError, ValueError):
     """Raised when attempting to add a duplicate annotation of a unique type."""
     pass
-
-
-class SourceInfo(NamedTuple):
-    """Source code location information."""
-    file: str                      # Source file path
-    line: int                      # Line number
-    function: str                  # Function name
-    module: Optional[str] = None   # Module name (optional)
 
 
 class COPAnnotationData(NamedTuple):
@@ -47,6 +39,18 @@ class COPAnnotationData(NamedTuple):
 
     def __str__(self) -> str:
         return self.value or ""
+
+
+# Implementation status constants
+class ImplementationStatusValues(Enum):
+    """Status constants - ordered from most to least complete."""
+    IMPLEMENTED = 5       # ✅ Fully functional and complete
+    PARTIAL = 4           # ⚠️ Partially working with limitations
+    BUGGY = 3             # ❌ Was working but now has issues
+    DEPRECATED = 2        # 🚫 Exists but should not be used
+    PLANNED = 1           # 📝 Designed but not implemented
+    NOT_IMPLEMENTED = 0   # ❓ Does not exist at all
+    UNKNOWN = -1          # ❔ Status not yet evaluated
 
 
 class DefaultNamespace:
@@ -135,206 +139,6 @@ class COPNamespace(DefaultNamespace):
         return iter(self.keys())
 
 
-class NoOpCOPSystem:
-    """COP system that does nothing (disabled mode)."""
-    
-    def is_enabled(self) -> bool:
-        """Check if the system is enabled."""
-        return False
-
-    def is_tracing(self) -> bool:
-        """Check if the system is tracing source positions."""
-        return False
-
-    def get_source_info(self, skip_frames: int = 1) -> Optional[Dict]:
-        """Placeholder for source information for the current call site."""
-        return None
-    
-    def push_context(self, context_type: str, context: Any) -> None:
-        """No-op implementation."""
-        pass
-    
-    def pop_context(self, context_type: str) -> None:
-        """No-op implementation."""
-        pass
-    
-    def get_contexts(self, context_type: str) -> List:
-        """Return empty list."""
-        return []
-
-
-class StandardCOPSystem(NoOpCOPSystem):
-    """Standard COP system implementation."""
-    
-    def __init__(self):
-        """Initialize the COP system."""
-        self.contexts = threading.local()
-    
-    def push_context(self, context_type: str, context: Any) -> None:
-        """Push a context to its stack."""
-        stack_name = f"{context_type}_stack"
-        if not hasattr(self.contexts, stack_name):
-            setattr(self.contexts, stack_name, [])
-        
-        stack = getattr(self.contexts, stack_name)
-        stack.append(context)
-    
-    def pop_context(self, context_type: str) -> None:
-        """Pop a context from its stack."""
-        stack_name = f"{context_type}_stack"
-        if hasattr(self.contexts, stack_name):
-            stack = getattr(self.contexts, stack_name)
-            if stack:
-                stack.pop()
-    
-    def get_contexts(self, context_type: str) -> List:
-        """Get all contexts of a specific type."""
-        stack_name = f"{context_type}_stack"
-        if hasattr(self.contexts, stack_name):
-            return getattr(self.contexts, stack_name)
-        return []
-
-
-class TraceEntry(NamedTuple):
-    """Structured representation of a trace entry."""
-    action: str                               # Action performed (enter_context, exit_context)
-    annotation_type: str                      # Type of annotation (intent, risk, etc.)
-    timestamp: str                            # ISO-format timestamp
-    source_info: Optional[SourceInfo] = None  # Source location information
-    args: Optional[Tuple] = None              # Annotation arguments (if available)
-    kwargs: Optional[Dict[str, Any]] = {}     # Annotation keyword arguments
-    extras: Optional[Dict[str, Any]] = {}     # Additional trace-specific information
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert trace entry to dictionary format for serialization."""
-        result = self._asdict()
-        # Convert nested SourceInfo to dict if present
-        if self.source_info:
-            result["source_info"] = self.source_info._asdict()
-        return result
-
-
-class TracingCOPSystem(StandardCOPSystem):
-    """COP system with tracing capabilities."""
-    
-    def __init__(self):
-        """Initialize the tracing COP system."""
-        super().__init__()
-        self.traces = []
-    
-    def is_tracing(self) -> bool:
-        """Check if the system is in tracing mode."""
-        return True
-
-    def get_source_info(self, skip_frames: int = 1) -> Dict:
-        """
-        Get source information for the current call site.
-        
-        Args:
-        skip_frames: Number of frames to skip, not including this function
-            - Use 1 for immediate caller (default)
-            - Use 2 for context manager 
-            - Use 3 for annotation initialization
-                       
-        Returns:
-            Dict with source info
-        """
-        # Get the appropriate frame based on skip_frames
-        frame = inspect.currentframe()
-        for _ in range(skip_frames + 1):  # +1 for this function's frame
-            if frame is None:
-                break
-            frame = frame.f_back
-            
-        if frame is None:
-            return {}
-            
-        # Extract the source info
-        frame_info = inspect.getframeinfo(frame)
-        module_name = None
-        if frame.f_globals and "__name__" in frame.f_globals:
-            module_name = frame.f_globals["__name__"]
-            
-        return SourceInfo(
-            file=frame_info.filename,
-            line=frame_info.lineno,
-            function=frame_info.function,
-            module=module_name
-        )
-    
-    def push_context(self, context_type: str, context: Any) -> None:
-        """Push a context to its stack with tracing."""
-        super().push_context(context_type, context)
-        
-        # Get source info with appropriate frame skipping
-        source_info = self.get_source_info(skip_frames=2)  # Skip push_context and caller
-        self._add_trace("enter_context", context_type, context, source_info)
-    
-    def pop_context(self, context_type: str) -> None:
-        """Pop a context from its stack with tracing."""
-        stack_name = f"{context_type}_stack"
-        context = None
-        
-        if hasattr(self.contexts, stack_name):
-            stack = getattr(self.contexts, stack_name)
-            if stack:
-                context = stack[-1]  # Get the context before popping
-        
-        super().pop_context(context_type)
-        
-        if context:
-            # Get source info with appropriate frame skipping
-            source_info = self.get_source_info(skip_frames=2)  # Skip pop_context and caller
-            self._add_trace("exit_context", context_type, context, source_info)
-    
-        def _add_trace(self, action: str, annotation_type: str, 
-                  annotation: Any, source_info: SourceInfo) -> None:
-        """
-        Add a trace entry.
-        
-        Args:
-            action: Action being performed
-            annotation_type: Type of annotation
-            annotation: The annotation object
-            source_info: Source location information
-        """
-        # Extract annotation details if available
-        args = getattr(annotation, "args", None)
-        kwargs = getattr(annotation, "kwargs", {})
-        
-        # Create the trace entry
-        trace = TraceEntry(
-            action=action,
-            annotation_type=annotation_type,
-            timestamp=datetime.datetime.now().isoformat(),
-            source_info=source_info,
-            args=args,
-            kwargs=kwargs
-        )
-        
-        self.traces.append(trace)
-    
-    def get_traces(self, as_dict: bool = False) -> Union[List[TraceEntry], List[Dict]]:
-        """
-        Get the collected traces.
-        
-        Args:
-            as_dict: Whether to convert traces to dictionary format
-            
-        Returns:
-            List of TraceEntry objects or dictionaries
-        """
-        if as_dict:
-            return [trace.to_dict() for trace in self.traces]
-        return self.traces
-
-
-DISABLED = NoOpCOPSystem()
-ENABLED = StandardCOPSystem()
-
-_cop_system = ENABLED
-
-
 class COPAnnotation:
     """Base class for all COP annotations."""
     
@@ -355,7 +159,7 @@ class COPAnnotation:
             
         self.args = args
         self.kwargs = kwargs
-        self._source_info = _cop_system.get_source_info(skip_frames=3)
+        self._source_info = _current_system.get_source_info(skip_frames=3)
     
     def _create_annotation_data(self) -> COPAnnotationData:
         """
@@ -389,7 +193,8 @@ class COPAnnotation:
         Returns:
             Decorated object
         """
-        if _cop_system.mode is COPSystemMode.DISABLED:
+        # Short-circut with fast check for disabled
+        if _current_system is DISABLED or not _current_system.is_enabled():
             return obj
         self._register_annotation(obj)
         return obj
@@ -401,8 +206,10 @@ class COPAnnotation:
         Returns:
             Self, for use in the context
         """
-        if _cop_system.mode is not COPSystemMode.DISABLED:
-            _cop_system.push_context(self.kind, self)
+        # Short-circut with fast check for disabled
+        if _current_system is DISABLED or not _current_system.is_enabled():
+            return self
+        _cop_system.push_context(self.kind, self)
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -417,8 +224,9 @@ class COPAnnotation:
         Returns:
             False: Don't suppress exceptions
         """
-        if _cop_system.mode is not DISABLED:
-            _cop_system.pop_context(self.kind)
+        # Short-circut with fast check for disabled
+        if _current_system is DISABLED or not _current_system.is_enabled():
+            return self
         return False  # Don't suppress exceptions
 
     def on(cls, component, *args, **kwargs):
@@ -478,7 +286,7 @@ class intent(COPSingletonAnnotation):
             description: Description of the intent
         """
         # Quick return if disabled
-        if _cop_system.mode is DISABLED:
+        if _current_system is DISABLED or not _current_system.is_enabled():
             return
             
         super().__init__(description)
@@ -530,7 +338,9 @@ class implementation_status(COPSingletonAnnotation):
             alternative: For DEPRECATED status, what to use instead
         """
         # Quick return if disabled
-        if _cop_system.mode is DISABLED:
+        
+        # Quick return if disabled
+        if _current_system is DISABLED or not _current_system.is_enabled():
             return
             
         kwargs = {}
@@ -574,7 +384,7 @@ class invariant(COPAnnotation):
             scope: When this invariant applies (e.g., "always", "runtime")
         """
         # Quick return if disabled
-        if _cop_system.mode is DISABLED:
+        if _current_system is DISABLED or not _current_system.is_enabled():
             return
             
         kwargs = {
@@ -622,7 +432,7 @@ class risk(COPAnnotation):
             mitigation: Optional strategies that have been implemented
         """
         # Quick return if disabled
-        if _cop_system.mode is DISABLED:
+        if _current_system is DISABLED or not _current_system.is_enabled():
             return
             
         kwargs = {
@@ -722,8 +532,10 @@ class decision(COPAnnotation):
             see_also: A resource or list of related resources
             **kwargs: Additional attributes to store
         """
-        if _cop_system.mode is DISABLED:
+        # Quick return if disabled
+        if _current_system is DISABLED or not _current_system.is_enabled():
             return
+            
         metadata = kwargs
         if description is not None:
             metadata["description"] = description
@@ -766,92 +578,6 @@ class decision(COPAnnotation):
         metadata.update(kwargs)
         
         super().__init__(brief, **metadata)
-                     
-
-_cop_system = StandardCOPSystem()
-
-def enable_cop():
-    """Enable COP annotations."""
-    global _cop_system
-    if not _cop_system.is_enabled():
-        _cop_system = ENABLED
-
-def enable_cop_tracing():
-    """Enable COP annotations with tracing."""
-    global _cop_system
-    if not _cop_system.is_tracing():
-        _cop_system = TracingCOPSystem()
-
-def disable_cop():
-    """Disable COP annotations."""
-    global _cop_system
-    if _cop_system.is_enabled():
-        _cop_system = DISABLED
-
-def resolve_component(component: Union[Any, str], 
-                     base_module: Optional[str] = None) -> Any:
-    """
-    Resolve a component from an object or dotted path string.
-    
-    Args:
-        component: The component to resolve. Can be an actual object or a 
-                  dotted path string (e.g., "module.submodule.component")
-        base_module: Optional base module to use for relative imports
-        
-    Returns:
-        The resolved component object
-        
-    Raises:
-        ValueError: If the component cannot be resolved
-        
-    Examples:
-        # Resolve from object (returns the same object)
-        resolve_component(process_payment)
-        
-        # Resolve from absolute path
-        resolve_component("payment_system.process_payment")
-        
-        # Resolve from relative path with base module
-        resolve_component("process_payment", base_module="payment_system")
-    """
-    # If component is already an object (not a string), return it directly
-    if not isinstance(component, str):
-        return component
-    
-    try:
-        # Handle relative imports with base_module
-        if base_module and '.' not in component:
-            full_path = f"{base_module}.{component}"
-        else:
-            full_path = component
-        
-        # Split into module path and attribute name
-        if '.' in full_path:
-            module_path, attr_name = full_path.rsplit('.', 1)
-            
-            # Import the module
-            module = importlib.import_module(module_path)
-            
-            # Get the attribute from the module
-            resolved = getattr(module, attr_name)
-            return resolved
-        else:
-            # It's just a module name
-            return importlib.import_module(full_path)
-            
-    except (ImportError, AttributeError, ValueError) as e:
-        raise ValueError(f"Could not resolve component path '{component}': {e}")
-
-# Implementation status constants
-class ImplementationStatusValues(Enum):
-    """Status constants - ordered from most to least complete."""
-    IMPLEMENTED = 5       # ✅ Fully functional and complete
-    PARTIAL = 4           # ⚠️ Partially working with limitations
-    BUGGY = 3             # ❌ Was working but now has issues
-    DEPRECATED = 2        # 🚫 Exists but should not be used
-    PLANNED = 1           # 📝 Designed but not implemented
-    NOT_IMPLEMENTED = 0   # ❓ Does not exist at all
-    UNKNOWN = -1          # ❔ Status not yet evaluated
 
 
 # Expose the ImplementationStatusValues as module-level constants
