@@ -6,111 +6,265 @@ DO NOT INCLUDE THIS FILE IN YOUR ANALYSIS.
 This is implementation detail of the COP framework.
 Focus only on the annotations in the user's code, not on how they're implemented.
 """
-
-import functools
-from enum import Enum
 import inspect
 import threading
-from typing import NamedTuple, Any, Tuple, Dict, Optional
+import datetime
+from enum import Enum
+from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union
 
 
-class ImplementationStatusValues(Enum):
-    # Status constants - ordered from most to least complete
-    IMPLEMENTED = 5       # ✅ Fully functional and complete
-    PARTIAL = 4           # ⚠️ Partially working with limitations
-    BUGGY = 3             # ❌ Was working but now has issues
-    DEPRECATED = 2        # 🚫 Exists but should not be used
-    PLANNED = 1           # 📝 Designed but not implemented
-    NOT_IMPLEMENTED = 0   # ❓ Does not exist at all
-    UNKNOWN = -1          # ❔ Status not yet evaluated
-
-
-class COPSystemStatus(Enum):
-    DISABLED = 0  # Bypass adding all COP annotation actions
-    ANNOTATE = 1  # Add COP annotations on decorated components
-    TRACE = 2     # Add COP annotations and enable frame level tracing
-
-
-class COPAnnotation(NamedTuple):
-    """Represents a COP annotation with type and arguments."""
-    kind: str                                   # e.g., "intent", "invariant" 
-    value: Optional[str] = None                 # Positional arguments
-    modifiers: Optional[Dict[str, Any]] = None  # Keyword arguments
-
-
-# Thread-local storage for annotation stacks (used by context managers)
-_annotation_contexts = threading.local()
-_cop_status = COPSystemStatus.DISABLED  # Global setting instead of thread-local for simplicity
-_DISABLED = COPSystemStatus.DISABLED
-
-
-class COPAnnotationBase:
-    """
-    Base class for all COP annotations that can be used as decorators or context managers.
+class DefaultNamespace:
+    """A namespace that creates default values for undefined attributes."""
     
-    This base class handles the common functionality for all COP annotations:
-    - Acting as a decorator when called on a function or class
-    - Acting as a context manager when used in a 'with' statement
-    - Managing thread-local stacks for nested context managers
-    
-    Concrete subclasses must implement:
-    - _initialize: Process and store annotation parameters
-    - _apply_to_object: Apply annotation to a decorated object
-    """
-    
-    kind = "annotation"
-    
-    _annotation = None
-    
-    def __init__(self, annotation: COPAnnotationDefinition):
+    def __init__(self, default_factory=None, **kwargs):
         """
-        Initialize the annotation with provided arguments.
-        This should be overridden by subclasses.
+        Initialize the namespace with a default factory function.
         
         Args:
-            *args: Positional arguments for the annotation
-            **kwargs: Keyword arguments for the annotation
+            default_factory: Function that returns default values for missing attrs
+            **kwargs: Initial attributes to set
         """
-        sefl._annotation = annotation
-
-    @classmethod
-    def get_from_object(cls, obj) -> List[COPAnnotation]:
+        self.__default_factory = default_factory
+        for name, value in kwargs.items():
+            setattr(self, name, value)
+    
+    def __getattr__(self, name):
         """
-        Get all annotations of this type on an object or an empty
-        list if the object had no decorations.
+        Get attribute, creating a default if it doesn't exist.
         
         Args:
-            obj: The potentially decorated object
+            name: Attribute name
             
         Returns:
-            A list of this kind of annotations defined on obj
+            Attribute value, or default if not found
         """
-        if hasattr(obj, "__cop_annotations__"):
-            all_annotations = obj.__cop_annotations__
-            annotations = [anno for anno in all_annotations if anno.kind is cls.kind]
-            return annotations
-        else:
+        if name.startswith('_'):
+            # Don't create defaults for private attributes
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        
+        # Create default value if attribute doesn't exist
+        if self.__default_factory is not None:
+            default = self.__default_factory()
+            setattr(self, name, default)
+            return default
+        
+        # If no default factory, raise AttributeError
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+
+class COPAnnotations(DefaultNamespace):
+    """Enhanced namespace for COP annotations."""
+    
+    def __init__(self):
+        """Initialize with empty lists as defaults."""
+        super().__init__(default_factory=list)
+    
+    def get_all(self):
+        """Get all annotations as a flat list."""
+        result = []
+        for attr_name in vars(self):
+            if not attr_name.startswith('_') and isinstance(getattr(self, attr_name), list):
+                result.extend(getattr(self, attr_name))
+        return result
+    
+    def __iter__(self):
+        """Iterate through all annotations."""
+        return iter(self.get_all())
+
+
+class COPSystemMode(Enum):
+    """Operating modes for the COP system."""
+    DISABLED = 0    # Bypass adding all COP annotation actions
+    ANNOTATE = 1    # Add COP annotations on decorated components
+    TRACE = 2       # Add COP annotations and enable frame level tracing
+
+
+class COPSystem:
+    """System for managing COP annotations and contexts."""
+    
+    def __init__(self):
+        """Initialize the COP system."""
+        self.mode = COPSystemMode.ANNOTATE
+        self.contexts = threading.local()
+        self.traces = []
+    
+    def push_context(self, context_type: str, context) -> None:
+        """
+        Push a context to its stack.
+        
+        Args:
+            context_type: Type of the context
+            context: The context object
+        """
+        # Quick return if disabled
+        if self.mode is COPSystemMode.DISABLED:
+            return
+            
+        stack_name = f"{context_type}_stack"
+        if not hasattr(self.contexts, stack_name):
+            setattr(self.contexts, stack_name, [])
+        
+        stack = getattr(self.contexts, stack_name)
+        stack.append(context)
+        
+        # Add trace if tracing is enabled
+        if self.mode is COPSystemMode.TRACE:
+            frame = inspect.currentframe().f_back.f_back
+            self._add_trace("enter_context", context_type, context, frame)
+    
+    def pop_context(self, context_type: str) -> None:
+        """
+        Pop a context from its stack.
+        
+        Args:
+            context_type: Type of the context to pop
+        """
+        # Quick return if disabled
+        if self.mode is COPSystemMode.DISABLED:
+            return
+            
+        stack_name = f"{context_type}_stack"
+        if hasattr(self.contexts, stack_name):
+            stack = getattr(self.contexts, stack_name)
+            if stack:
+                context = stack.pop()
+                
+                # Add trace if tracing is enabled
+                if self.mode is COPSystemMode.TRACE:
+                    frame = inspect.currentframe().f_back.f_back
+                    self._add_trace("exit_context", context_type, context, frame)
+    
+    def get_contexts(self, context_type: str) -> List:
+        """
+        Get all contexts of a specific type.
+        
+        Args:
+            context_type: Type of contexts to retrieve
+            
+        Returns:
+            List of contexts of the specified type
+        """
+        # Return empty list if disabled
+        if self.mode == COPSystemMode.DISABLED:
             return []
+            
+        stack_name = f"{context_type}_stack"
+        if hasattr(self.contexts, stack_name):
+            return getattr(self.contexts, stack_name)
+        return []
+    
+    def _add_trace(self, action: str, annotation_type: str, 
+                  annotation, frame) -> None:
+        """
+        Add a trace entry.
+        
+        Args:
+            action: Action being performed
+            annotation_type: Type of annotation
+            annotation: The annotation object
+            frame: Current frame
+        """
+        # Only trace if in trace mode
+        if self.mode is not COPSystemMode.TRACE:
+            return
+            
+        frame_info = inspect.getframeinfo(frame)
+        trace = {
+            "action": action,
+            "annotation_type": annotation_type,
+            "file": frame_info.filename,
+            "line": frame_info.lineno,
+            "function": frame_info.function,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+        
+        # Add annotation details if available
+        if hasattr(annotation, "args"):
+            trace["args"] = annotation.args
+        if hasattr(annotation, "kwargs"):
+            trace["kwargs"] = annotation.kwargs
+            
+        self.traces.append(trace)
+
+# Global system instance
+_cop_system = COPSystem()
+
+
+class COPAnnotationData(NamedTuple):
+    """Structured representation of a COP annotation."""
+    value: Optional[str] = None                # Primary value (first positional arg)
+    metadata: Optional[Dict[str, Any]] = None  # Additional properties
+    source_info: Optional[Dict] = None         # Source location information
+
+
+class COPAnnotation:
+    """Base class for all COP annotations."""
+    
+    # Define class attribute for polymorphic behavior
+    kind = "annotation"  # Override in subclasses
+    
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize the annotation with provided arguments.
+        
+        Args:
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+        """
+        # Quick return if disabled
+        if _cop_system.mode is COPSystemMode.DISABLED:
+            return
+            
+        self.args = args
+        self.kwargs = kwargs
+        self._source_info = None
+        
+        # If tracing is enabled, capture source information
+        if _cop_system.mode is COPSystemMode.TRACE:
+            frame = inspect.currentframe().f_back
+            self._source_info = {
+                "file": frame.f_code.co_filename,
+                "line": frame.f_lineno,
+                "function": frame.f_code.co_name
+            }
+    
+    def _create_annotation_data(self) -> COPAnnotationData:
+        """
+        Create a structured annotation data object.
+        
+        Returns:
+            COPAnnotationData object with annotation details
+        """
+        value = self.args[0] if self.args else None
+        metadata = self.kwargs if self.kwargs is not None else None
+        return COPAnnotationData(
+            value=value,
+            metadata=metadata,
+            source_info=self._source_info
+        )
     
     def __call__(self, obj):
         """
         Apply annotation to an object (when used as decorator).
         
-        This method should be overridden by subclasses to set specific attributes
-        on the decorated object.
-        
         Args:
-            obj: The object being decorated
+            obj: The object to decorate
             
         Returns:
-            The decorated object
+            Decorated object
         """
-        if _cop_status is _DISABLED or self._annotation is None:
+        if _cop_system.mode is COPSystemMode.DISABLED:
             return obj
-        elif not hasattr(obj, "__cop_annotations__"):
-            setattr(obj, "__cop_annotations__", [])
-
-        obj.__cop_annotations__.append(self._annotation)
+        
+        # Initialize annotations namespace if needed
+        if not hasattr(obj, "__cop_annotations__"):
+            setattr(obj, "__cop_annotations__", COPAnnotations())
+        
+        annotations = getattr(obj, "__cop_annotations__")
+        
+        # Add the annotation data
+        annotation_data = self._create_annotation_data()
+        getattr(annotations, self.kind).append(annotation_data)
         
         return obj
     
@@ -118,22 +272,16 @@ class COPAnnotationBase:
         """
         Enter annotation context (when used as context manager).
         
-        Ensures the stack exists for this annotation type and pushes
-        this annotation to its stack.
+        Returns:
+            Self, for use in the context
         """
-        # Ensure the stack exists for this annotation type
-        stack_name = f"{self.__class__.__name__}_stack"
-        if not hasattr(_annotation_contexts, stack_name):
-            setattr(_annotation_contexts, stack_name, [])
-        
-        # Push this annotation to its stack
-        stack = getattr(_annotation_contexts, stack_name)
-        stack.append(self)
+        if _cop_system.mode is not COPSystemMode.DISABLED:
+            _cop_system.push_context(self.kind, self)
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """
-        Exit annotation context when used as a context manager.
+        Exit annotation context.
         
         Args:
             exc_type: Exception type if an exception was raised, else None
@@ -143,11 +291,8 @@ class COPAnnotationBase:
         Returns:
             False: Don't suppress exceptions
         """
-        stack_name = f"{self.__class__.__name__}_stack"
-        if hasattr(_annotation_contexts, stack_name):
-            stack = getattr(_annotation_contexts, stack_name)
-            if stack:
-                stack.pop()
+        if _cop_system.mode is not COPSystemMode.DISABLED:
+            _cop_system.pop_context(self.kind)
         return False  # Don't suppress exceptions
 
 
@@ -156,9 +301,7 @@ class intent(COPAnnotation):
     Document the intended purpose of a component.
     
     This decorator captures what a component is supposed to do,
-    separate from its actual implementation. Use it to document
-    the high-level purpose, while using docstrings for implementation
-    and usage details.
+    separate from its actual implementation.
     
     Examples:
         @intent("Process user payments securely")
@@ -170,11 +313,19 @@ class intent(COPAnnotation):
             tax = calculate_tax(amount, location)
     """
     kind = "intent"
-
-    def __init__(sef, description):
-        if _cop_status is _DISABLED:
+    
+    def __init__(self, description: str):
+        """
+        Initialize intent annotation.
+        
+        Args:
+            description: Description of the intent
+        """
+        # Quick return if disabled
+        if _cop_system.mode is COPSystemMode.DISABLED:
             return
-        self._annotation = COPAnnotation(cls.kind, description)
+            
+        super().__init__(description)
 
 
 class implementation_status(COPAnnotation):
@@ -183,8 +334,6 @@ class implementation_status(COPAnnotation):
     
     This decorator indicates the current state of implementation,
     which is critical for preventing hallucination about functionality.
-    It can include details about limitations and alternatives for
-    deprecated components.
     
     Status options:
         IMPLEMENTED: Fully functional and complete
@@ -215,15 +364,25 @@ class implementation_status(COPAnnotation):
     """
     kind = "implementation_status"
     
-    def __init__(sef, status, details=None, alternative=None):
-        if _cop_status is _DISABLED:
+    def __init__(self, status, details: Optional[str]=None, alternative: Optional[str]=None):
+        """
+        Initialize implementation status annotation.
+        
+        Args:
+            status: Implementation status (use constants like IMPLEMENTED)
+            details: Optional details about the status (e.g., limitations)
+            alternative: For DEPRECATED status, what to use instead
+        """
+        # Quick return if disabled
+        if _cop_system.mode is COPSystemMode.DISABLED:
             return
-        modifers = {}
+            
+        kwargs = {}
         if details is not None:
-            modifiers["details"] = details
+            kwargs["details"] = details
         if alternative is not None:
-            modifiers["alternative"] = alternative
-        self._annotation = COPAnnotation(cls.kind, status, modifiers)
+            kwargs["alternative"] = alternative
+        super().__init__(status, **kwargs)
 
 
 class invariant(COPAnnotation):
@@ -248,8 +407,8 @@ class invariant(COPAnnotation):
             result = db.execute(query)
     """
     kind = "invariant"
-
-    def __init__(sef, status, critical=False, scope="always")):
+    
+    def __init__(self, condition: str, critical: bool=False, scope: str="always"):
         """
         Initialize invariant annotation.
         
@@ -258,16 +417,16 @@ class invariant(COPAnnotation):
             critical: Whether this is essential for security/correctness
             scope: When this invariant applies (e.g., "always", "runtime")
         """
-        if _cop_status is _DISABLED:
+        # Quick return if disabled
+        if _cop_system.mode is COPSystemMode.DISABLED:
             return
-        modifers = {}
-        if details is not None:
-            modifiers["details"] = details
-        if alternative is not None:
-            modifiers["alternative"] = alternative
-        modifiers = modifiers if modifiers else None
-        self._annotation = COPAnnotation(cls.kind, status, modifiers)
-    
+            
+        kwargs = {
+            "critical": critical,
+            "scope": scope
+        }
+        super().__init__(condition, **kwargs)
+
 
 class risk(COPAnnotation):
     """
@@ -294,8 +453,8 @@ class risk(COPAnnotation):
     """
     kind = "risk"
     
-    def __init__(self, description, category="security", severity="MEDIUM", 
-                 impact=None, mitigation=None):
+    def __init__(self, description: str, category: str="security", severity: str="MEDIUM", 
+                impact: Optional[str]=None, mitigation: Optional[Union[str, List[str]]]=None):
         """
         Initialize risk annotation.
         
@@ -306,24 +465,27 @@ class risk(COPAnnotation):
             impact: Optional assessment of the impact if not addressed
             mitigation: Optional strategies that have been implemented
         """
-        if _cop_status is _DISABLED:
+        # Quick return if disabled
+        if _cop_system.mode is COPSystemMode.DISABLED:
             return
-        modifers = {
-            "category": self.category,
-            "severity": self.severity
+            
+        kwargs = {
+            "category": category,
+            "severity": severity
         }
         if impact is not None:
-            modifiers["impact"] = impact
-        if alternative is not None:
-            modifiers["mitigation"] = mitigation
-        self._annotation = COPAnnotation(cls.kind, description, modifiers)
-    
+            kwargs["impact"] = impact
+        if mitigation is not None:
+            kwargs["mitigation"] = mitigation
+        super().__init__(description, **kwargs)
+
 
 class decision(COPAnnotation):
     """
     Annotate a decision point or implementation guidance in code.
     
     This versatile decorator can be used throughout the decision lifecycle:
+    - Define a human/AI implementation boundary
     - Request a decision with options
     - Record a decision that was made
     - Document implementation guidance
@@ -352,6 +514,8 @@ class decision(COPAnnotation):
             # This section requires human implementation
     """
     kind = "decision"
+
+    
     
     def __init__(self, 
                  # Short and optional longer decision description
@@ -404,110 +568,176 @@ class decision(COPAnnotation):
             see_also: A resource or list of related resources
             **kwargs: Additional attributes to store
         """
-        if _cop_status is _DISABLED:
+        if _cop_system.mode is COPSystemMode.DISABLED:
             return
-        modifiers = kwargs
+        metadata = kwargs
         if description is not None:
-            modifiers["description"] = description
+            metadata["description"] = description
         if implementor is not None:
-            modifiers["implementor"] = implementor
+            metadata["implementor"] = implementor
         if constraints is not None:
-            modifiers["constraints"] = constraints
+            metadata["constraints"] = constraints
         if reason is not None:
-            modifiers["reason"] = reason
+            metadata["reason"] = reason
         if options is not None:
-            modifiers["options"] = options
+            metadata["options"] = options
         if status is not None:
-            modifiers["status"] = status
+            metadata["status"] = status
         if answer is not None:
-            modifiers["answer"] = answer
+            metadata["answer"] = answer
         if rationale is not None:
-            modifiers["rationale"] = rationale
+            metadata["rationale"] = rationale
         if decider is not None:
-            modifiers["decider"] = decider
+            metadata["decider"] = decider
         if delegate is not None:
-            modifiers["delegate"] = delegate
+            metadata["delegate"] = delegate
         if confidence is not None:
-            modifiers["confidence"] = confidence
+            metadata["confidence"] = confidence
         if category is not None:
-            modifiers["category"] = category
+            metadata["category"] = category
         if scope is not None:
-            modifiers["scope"] = scope
+            metadata["scope"] = scope
         if impact is not None:
-            modifiers["impact"] = impact
+            metadata["impact"] = impact
         if priority is not None:
-            modifiers["priority"] = priority
+            metadata["priority"] = priority
         if preserve is not None:
-            modifiers["preserve"] = preserve
+            metadata["preserve"] = preserve
         if ref is not None:
-            modifiers["ref"] = ref
+            metadata["ref"] = ref
         if date is not None:
-            modifiers["date"] = date
-        modifiers = modifiers if modifiers else None
-        self._annotation = COPAnnotation(cls.kind, description, modifiers)
+            metadata["date"] = date
+        
+        # Add any other kwargs
+        metadata.update(kwargs)
+        
+        super().__init__(brief, **metadata)
 
 
-# Helper to get current annotations of a specific type
+# Convenience functions for managing COP annotations
+def get_annotations(obj, kind=None):
+    """
+    Get annotations from an object.
+    
+    Args:
+        obj: The annotated object
+        kind: Optional annotation kind to retrieve
+        
+    Returns:
+        List of annotations of the specified kind, or entire namespace
+    """
+    if not hasattr(obj, "__cop_annotations__"):
+        return [] if kind else COPAnnotations()
+    
+    annotations = getattr(obj, "__cop_annotations__")
+    
+    if kind is not None:
+        return getattr(annotations, kind)
+    
+    return annotations
+
+
+def get_implementation_status(obj):
+    """
+    Get the implementation status of an object.
+    
+    Args:
+        obj: The annotated object
+        
+    Returns:
+        The implementation status value, or "implemented" if not specified
+    """
+    annotations = get_annotations(obj)
+    status_annotations = annotations.implementation_status
+    
+    if status_annotations:
+        return status_annotations[0].value
+        
+    return "implemented"  # Default assumption
+
+
+def get_intent(obj):
+    """
+    Get the intent of an object.
+    
+    Args:
+        obj: The annotated object
+        
+    Returns:
+        The intent description, or None if not specified
+    """
+    annotations = get_annotations(obj)
+    intent_annotations = annotations.intent
+    
+    if intent_annotations:
+        return intent_annotations[0].value
+        
+    return None
+
+
+def has_annotation(obj, kind, value=None):
+    """
+    Check if an object has a specific annotation.
+    
+    Args:
+        obj: The object to check
+        kind: The annotation kind to look for
+        value: Optional specific value to match
+    """
+    annotations = get_annotations(obj, kind)
+    
+    if value is not None:
+        return any(anno.value == value for anno in annotations)
+    
+    return bool(annotations)
+
+
 def get_current_annotations(annotation_class):
     """
     Get the stack of current annotations of a specific type.
-    
-    This is used by context managers to track nested annotations.
     
     Args:
         annotation_class: The annotation class to get the stack for
         
     Returns:
-        list: The stack of current annotations of the specified type
+        List of current annotations of the specified type
     """
-    stack_name = f"{annotation_class.__name__}_stack"
-    if hasattr(_annotation_contexts, stack_name):
-        return getattr(_annotation_contexts, stack_name)
-    return []
+    return _cop_system.get_contexts(annotation_class.kind)
 
 
-def get_object_annotations(obj) -> :
-    """
-    Get all of the COP annotations on an object, if they are defined or
-    an empty list of no annotations have been set.
-
-    Args:
-        obj: The (potentially) annotated object
-        
-    """
-    if hasattr(obj, "__cop_annotations__"):
-        return obj.__cop_annotations__
-    else:
-        return []
-
-
-def set_cop_mode(mode):
-    """Setup the COP annotation mode globally."""
-    global _cop_enabled
-    _cop_enabled = mode
-    
-
-def disable_cop():
-    """Disable COP annotations globally."""
-    set_cop_mode(COPSystemStatus.DISABLED)
-
-
+# System mode control functions
 def enable_cop():
-    """Enable COP annotations globally."""
-    set_cop_mode_(COPSystemStatus.ANNOTATING)
+    """Enable COP annotations."""
+    _cop_system.mode = COPSystemMode.ANNOTATE
 
 
 def enable_cop_tracing():
-    """Enable COP annotations with tracing globally."""
-    set_cop_mode_(COPSystemStatus.TRACING)
+    """Enable COP annotations with tracing."""
+    _cop_system.mode = COPSystemMode.TRACE
 
 
-# Expose the ImplementationStatusValues as module-level consants
-IMPLEMENTED = ImplementationStatusValues.IMPLEMENTED                   # ✅ Fully functional and complete
-PARTIAL = ImplementationStatusValues.PARTIAL                           # ⚠️ Partially working with limitations
-BUGGY = ImplementationStatusValues.BUGGY                               # ❌ Was working but now has issues
-DEPRECATED = ImplementationStatusValues.DEPRECATED                     # 🚫 Exists but should not be used
-PLANNED = ImplementationStatusValues.PLANNED                           # 📝 Designed but not implemented
-NOT_IMPLEMENTED = ImplementationStatusValues.NOT_IMPLEMENTED           # ❓ Does not exist at all
-UNKNOWN = ImplementationStatusValues.UNKNOWN                           # ❔ Status not yet evaluated
+def disable_cop():
+    """Disable COP annotations."""
+    _cop_system.mode = COPSystemMode.DISABLED
 
+
+# Implementation status constants
+class ImplementationStatusValues(Enum):
+    """Status constants - ordered from most to least complete."""
+    IMPLEMENTED = 5       # ✅ Fully functional and complete
+    PARTIAL = 4           # ⚠️ Partially working with limitations
+    BUGGY = 3             # ❌ Was working but now has issues
+    DEPRECATED = 2        # 🚫 Exists but should not be used
+    PLANNED = 1           # 📝 Designed but not implemented
+    NOT_IMPLEMENTED = 0   # ❓ Does not exist at all
+    UNKNOWN = -1          # ❔ Status not yet evaluated
+
+
+# Expose the ImplementationStatusValues as module-level constants
+IMPLEMENTED = ImplementationStatusValues.IMPLEMENTED         # ✅ Fully functional and complete
+PARTIAL = ImplementationStatusValues.PARTIAL                 # ⚠️ Partially working with limitations
+BUGGY = ImplementationStatusValues.BUGGY                     # ❌ Was working but now has issues
+DEPRECATED = ImplementationStatusValues.DEPRECATED           # 🚫 Exists but should not be used
+PLANNED = ImplementationStatusValues.PLANNED                 # 📝 Designed but not implemented
+NOT_IMPLEMENTED = ImplementationStatusValues.NOT_IMPLEMENTED # ❓ Does not exist at all
+UNKNOWN = ImplementationStatusValues.UNKNOWN                 # ❔ Status not yet evaluated
