@@ -5,87 +5,161 @@
 | This module connects tests to COP annotations, completing the     |
 | decision tetrahedron by enabling verification of implementation   |
 | against intent and decisions.                                     |
-| This guide helps you WRITE TESTS for COP annotations effectively. |
-| For understanding existing code, refer to the min.py guide.       |
 =====================================================================
-KEY CONCEPTS:
----------------------------------------------------------------------
+
 🎯 INTENT: What code is supposed to do (from annotations)
 🛠️ IMPLEMENTATION: What code actually does (from implementation)
 ✅ TESTS: Verification that implementation fulfills intent
 🤔 DECISIONS: Why specific approaches were chosen
 
-SYNTAX PATTERNS:
+CORE USAGE PATTERNS:
 ---------------------------------------------------------------------
-```
-# Link tests to components with specific annotations
-@invariant.test_for(component, "condition")                # ✅→🎯
-@risk.test_for(component, "description", severity="HIGH")  # ✅→🔒
-@implementation_status.test_for(component, IMPLEMENTED)    # ✅→🛠️
-@decision.test_for(component, question="Which gateway?")   # ✅→🤔
-@intent.test_for(component, "process payments securely")   # ✅→🎯
 
-# Define externalized invariants in test code
-invariant.on(component, "condition", critical=True)        # 🎯→✅
-risk.on(component, "description", severity="HIGH")         # 🔒→✅
+1️⃣ LINK TESTS TO COMPONENTS:
+   @invariant.test_for(process_payment, "Transactions must be atomic")
+   def test_transaction_atomicity():
+       # Test that verifies this invariant on this component
 
-# Verify annotation correctness
-assert_invariant(condition, message)                       # ✅→🎯
-assert_security_requirement(condition, message)            # ✅→🔒
-assert_implementation_matches_status(component, success)   # ✅→🛠️
+2️⃣ DEFINE EXTERNALIZED INVARIANTS:
+   invariant.on(process_payment, "Currency must be supported")
+   # Defines invariant in tests without cluttering implementation
 
-# Analyze test coverage
-coverage = check_component_test_coverage(component)        # 📊
-report = generate_verification_report(module)              # 📝
-```
-⚠️ PREVENTING HALLUCINATION ⚠️:
+3️⃣ VERIFY IMPLEMENTATION STATUS:
+   @implementation_status.test_for(process_payment, IMPLEMENTED)
+   def test_implementation_completeness():
+       # Verifies process_payment is fully implemented
+
+4️⃣ VERIFY SECURITY RISKS:
+   @risk.test_for(process_payment, "Card data exposure", severity="HIGH")
+   def test_card_data_security():
+       # Verifies risk mitigation on this component
+
+5️⃣ VERIFY DECISION IMPLEMENTATION:
+   @decision.test_for(process_payment, "Use Stripe for payment processing")
+   def test_decision_implementation():
+       # Verifies decision was implemented correctly
+
+SPECIALIZED ASSERTIONS:
 ---------------------------------------------------------------------
-Tests validate that implementation status annotations match reality:
-```
-@implementation_status.test_for(component, NOT_IMPLEMENTED)
-def test_unimplemented():
-    with pytest.raises(NotImplementedError):
-        component()
+assert_invariant(condition, message=None, on=None)
+assert_maintained(condition, invariant_description, on=None)
+assert_violation_raises(expected_exception, callable_obj, *args, **kwargs)
 
-@implementation_status.test_for(component, PARTIAL)
-def test_partial():
-    assert component.implemented_part() is not None
-    with pytest.raises(NotImplementedError):
-        component.unimplemented_part()
-```
+assert_security_requirement(condition, message=None, on=None)
+assert_mitigated(condition, risk_description, on=None)
+assert_prevented(attack_function, *args, **kwargs)
+assert_sanitized(value, sanitizer, risk_description=None, on=None)
+
+assert_implementation_matches_status(component, behavior_success)
+assert_completeness(component, features)
+
+assert_decision_followed(condition, question, on=None)
+assert_constraints_met(constraints, on=None)
+
+assert_intent_fulfilled(condition, intent_description, on=None)
+assert_achieves_goal(goal_achieved, intent_description, on=None)
+
+⚠️ PREVENT META-DISTRACTION:
+1. Focus on what the tests verify, not the testing framework itself
+2. Keep annotations minimal - less is more
+3. Prioritize clear, direct connections between tests and components
+4. Security risks should have explicit test verification
 """
 
-# Testing-enhanced annotations for linking tests to components 🔗
+# Re-export testing-enhanced annotations
 from .annotations import (
-    intent,                # Test intent fulfillment 🎯
-    invariant,             # Test invariant maintenance ⚓
-    implementation_status, # Test implementation reality 🛠️
-    risk,                  # Test risk mitigation 🔒
-    decision               # Test decision implementation 🤔
+    intent, 
+    invariant, 
+    implementation_status, 
+    risk, 
+    decision
 )
 
-# Verification assertions for testing annotation correctness ✅
+# Re-export exception classes
+from .annotations import (
+    InvariantViolation,
+    SecurityRiskViolation,
+    ImplementationStatusMismatch,
+    DecisionViolation,
+    IntentViolation
+)
+
+# Re-export all assertion functions
 from .assertions import (
-    assert_invariant,                     # Verify invariant holds
-    assert_security_requirement,          # Verify security requirement met
-    assert_implementation_matches_status  # Verify status matches reality
+    # Invariant assertions
+    assert_invariant,
+    assert_maintained,
+    assert_violation_raises,
+    
+    # Security risk assertions
+    assert_security_requirement,
+    assert_mitigated,
+    assert_prevented,
+    assert_sanitized,
+    
+    # Implementation status assertions
+    assert_implementation_matches_status,
+    assert_completeness,
+    
+    # Decision assertions
+    assert_decision_followed,
+    assert_constraints_met,
+    
+    # Intent assertions
+    assert_intent_fulfilled,
+    assert_achieves_goal
 )
 
-# Analysis tools for measuring test coverage of annotations 📊
+# Re-export verification tools
 from .verification import (
-    check_component_test_coverage,   # Analyze component test coverage
-    generate_verification_report     # Generate module verification report
+    check_component_test_coverage,
+    generate_verification_report
 )
 
-# Implementation status constants for verification 🛠️
+# Re-export implementation status constants
 from ..core import (
-    IMPLEMENTED,     # ✅ Complete functionality
-    PARTIAL,         # ⚠️ Limited functionality
-    PLANNED,         # 📝 Designed but not implemented
-    NOT_IMPLEMENTED, # ❓ Does not exist
-    BUGGY,           # ❌ Was working but now has issues
-    DEPRECATED       # 🚫 Should not be used
+    # Implementation states
+    IMPLEMENTED,         # ✅ Fully functional and complete
+    PARTIAL,             # ⚠️ Partially working with limitations
+    PLANNED,             # 📝 Designed but not implemented
+    NOT_IMPLEMENTED,     # ❓ Does not exist at all
+    BUGGY,               # ❌ Was working but now has issues
+    DEPRECATED           # 🚫 Exists but should not be used
 )
 
-# Pytest integration 🧪
+# Export pytest plugin for auto-discovery
 from .integration import pytest_plugin
+
+# Define what is exported
+__all__ = [
+    # Enhanced annotations
+    'intent', 'invariant', 'implementation_status', 'risk', 'decision',
+    
+    # Exception classes
+    'InvariantViolation', 'SecurityRiskViolation', 'ImplementationStatusMismatch',
+    'DecisionViolation', 'IntentViolation',
+    
+    # Invariant assertions
+    'assert_invariant', 'assert_maintained', 'assert_violation_raises',
+    
+    # Security risk assertions
+    'assert_security_requirement', 'assert_mitigated', 'assert_prevented', 'assert_sanitized',
+    
+    # Implementation status assertions
+    'assert_implementation_matches_status', 'assert_completeness',
+    
+    # Decision assertions
+    'assert_decision_followed', 'assert_constraints_met',
+    
+    # Intent assertions
+    'assert_intent_fulfilled', 'assert_achieves_goal',
+    
+    # Verification tools
+    'check_component_test_coverage', 'generate_verification_report',
+    
+    # Implementation status constants
+    'IMPLEMENTED', 'PARTIAL', 'PLANNED', 'NOT_IMPLEMENTED', 'BUGGY', 'DEPRECATED',
+    
+    # Pytest plugin
+    'pytest_plugin'
+]
