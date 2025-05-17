@@ -164,6 +164,43 @@ def validate_email(email):
 @invariant("Transactions must be atomic", critical=True)
 def process_payment(payment_info):
     # Implementation...
+
+
+   TESTING COP ANNOTATIONS:
+---------------------------------------------------------------------
+Tests complete the truth triangle by verifying implementation matches intent.
+
+1️⃣ LINK TESTS TO COMPONENTS:
+   @intent.test_for(process_payment, "Process payments securely")
+   def test_payment_intent():
+       # Test that verifies the implementation fulfills the intent
+
+2️⃣ VERIFY IMPLEMENTATION STATUS:
+   @implementation_status.test_for(process_payment, IMPLEMENTED)
+   def test_implementation_completeness():
+       assert_implementation_matches_status(process_payment, True)
+
+3️⃣ TEST INVARIANTS:
+   @invariant.test_for(process_payment, "Transactions must be atomic")
+   def test_transaction_atomicity():
+       # Test that verifies this invariant is maintained
+
+4️⃣ VERIFY SECURITY RISKS:
+   @risk.test_for(process_payment, "Card data exposure")
+   def test_card_data_security():
+       assert_security_requirement(is_data_encrypted(payment_data))
+
+5️⃣ EXTERNALIZED INVARIANTS: For detailed invariants without cluttering code
+   # In core code - keep minimal
+   @invariant("See test file for detailed invariants")
+   def process_payment():
+       # Implementation
+   
+   # In test file - define detailed invariants
+   @register_invariants("payment_system.process_payment")
+   class PaymentInvariants:
+       currency_must_be_supported = "Currency must be supported"
+       amount_must_be_positive = "Amount must be positive"
 """
 
 from .core import (
