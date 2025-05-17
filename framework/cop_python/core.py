@@ -13,6 +13,28 @@ from enum import Enum
 from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union
 
 
+class SourceInfo(NamedTuple):
+    """Source code location information."""
+    file: str                      # Source file path
+    line: int                      # Line number
+    function: str                  # Function name
+    module: Optional[str] = None   # Module name (optional)
+
+
+class COPAnnotationData(NamedTuple):
+    """Structured representation of a COP annotation."""
+    value: Optional[str] = None                # Primary value (first positional arg)
+    metadata: Optional[Dict[str, Any]] = None  # Additional properties
+    source_info: Optional[SourceInfo] = None   # Source location information
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert annotation data to dictionary format for serialization."""
+        result = self._asdict()
+        if self.source_info:
+            result["source_info"] = self.source_info._asdict()            
+        return result
+
+
 class DefaultNamespace:
     """A namespace that creates default values for undefined attributes."""
     
@@ -132,6 +154,25 @@ class StandardCOPSystem(NoOpCOPSystem):
         return []
 
 
+class TraceEntry(NamedTuple):
+    """Structured representation of a trace entry."""
+    action: str                               # Action performed (enter_context, exit_context)
+    annotation_type: str                      # Type of annotation (intent, risk, etc.)
+    timestamp: str                            # ISO-format timestamp
+    source_info: Optional[SourceInfo] = None  # Source location information
+    args: Optional[Tuple] = None              # Annotation arguments (if available)
+    kwargs: Optional[Dict[str, Any]] = {}     # Annotation keyword arguments
+    extras: Optional[Dict[str, Any]] = {}     # Additional trace-specific information
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert trace entry to dictionary format for serialization."""
+        result = self._asdict()
+        # Convert nested SourceInfo to dict if present
+        if self.source_info:
+            result["source_info"] = self.source_info._asdict()
+        return result
+
+
 class TracingCOPSystem(StandardCOPSystem):
     """COP system with tracing capabilities."""
     
@@ -149,8 +190,11 @@ class TracingCOPSystem(StandardCOPSystem):
         Get source information for the current call site.
         
         Args:
-            skip_frames: Number of frames to skip (default: caller's caller)
-            
+        skip_frames: Number of frames to skip, not including this function
+            - Use 1 for immediate caller (default)
+            - Use 2 for context manager 
+            - Use 3 for annotation initialization
+                       
         Returns:
             Dict with source info
         """
@@ -166,11 +210,16 @@ class TracingCOPSystem(StandardCOPSystem):
             
         # Extract the source info
         frame_info = inspect.getframeinfo(frame)
-        return {
-            "file": frame_info.filename,
-            "line": frame_info.lineno,
-            "function": frame_info.function
-        }
+        module_name = None
+        if frame.f_globals and "__name__" in frame.f_globals:
+            module_name = frame.f_globals["__name__"]
+            
+        return SourceInfo(
+            file=frame_info.filename,
+            line=frame_info.lineno,
+            function=frame_info.function,
+            module=module_name
+        )
     
     def push_context(self, context_type: str, context: Any) -> None:
         """Push a context to its stack with tracing."""
@@ -197,8 +246,8 @@ class TracingCOPSystem(StandardCOPSystem):
             source_info = self.get_source_info(skip_frames=2)  # Skip pop_context and caller
             self._add_trace("exit_context", context_type, context, source_info)
     
-    def _add_trace(self, action: str, annotation_type: str, 
-                  annotation: Any, source_info: Dict) -> None:
+        def _add_trace(self, action: str, annotation_type: str, 
+                  annotation: Any, source_info: SourceInfo) -> None:
         """
         Add a trace entry.
         
@@ -208,35 +257,41 @@ class TracingCOPSystem(StandardCOPSystem):
             annotation: The annotation object
             source_info: Source location information
         """
-        trace = {
-            "action": action,
-            "annotation_type": annotation_type,
-            "timestamp": datetime.datetime.now().isoformat()
-        }
+        # Extract annotation details if available
+        args = getattr(annotation, "args", None)
+        kwargs = getattr(annotation, "kwargs", {})
         
-        # Add source info
-        trace.update(source_info)
+        # Create the trace entry
+        trace = TraceEntry(
+            action=action,
+            annotation_type=annotation_type,
+            timestamp=datetime.datetime.now().isoformat(),
+            source_info=source_info,
+            args=args,
+            kwargs=kwargs
+        )
         
-        # Add annotation details if available
-        if hasattr(annotation, "args"):
-            trace["args"] = annotation.args
-        if hasattr(annotation, "kwargs"):
-            trace["kwargs"] = annotation.kwargs
-            
         self.traces.append(trace)
+    
+    def get_traces(self, as_dict: bool = False) -> Union[List[TraceEntry], List[Dict]]:
+        """
+        Get the collected traces.
+        
+        Args:
+            as_dict: Whether to convert traces to dictionary format
+            
+        Returns:
+            List of TraceEntry objects or dictionaries
+        """
+        if as_dict:
+            return [trace.to_dict() for trace in self.traces]
+        return self.traces
 
 
 DISABLED = NoOpCOPSystem()
 ENABLED = StandardCOPSystem()
 
 _cop_system = ENABLED
-
-
-class COPAnnotationData(NamedTuple):
-    """Structured representation of a COP annotation."""
-    value: Optional[str] = None                # Primary value (first positional arg)
-    metadata: Optional[Dict[str, Any]] = None  # Additional properties
-    source_info: Optional[Dict] = None         # Source location information
 
 
 class COPAnnotation:
@@ -764,19 +819,19 @@ _cop_system = StandardCOPSystem()
 def enable_cop():
     """Enable COP annotations."""
     global _cop_system
-    if not isinstance(_cop_system, StandardCOPSystem) or isinstance(_cop_system, TracingCOPSystem):
-        _cop_system = StandardCOPSystem()
+    if not _cop_system.is_enabled():
+        _cop_system = ENABLED
 
 def enable_cop_tracing():
     """Enable COP annotations with tracing."""
     global _cop_system
-    if not isinstance(_cop_system, TracingCOPSystem):
+    if not _cop_system.is_tracing():
         _cop_system = TracingCOPSystem()
 
 def disable_cop():
     """Disable COP annotations."""
     global _cop_system
-    if not isinstance(_cop_system, NoOpCOPSystem):
+    if _cop_system.is_enabled():
         _cop_system = DISABLED
 
 # Implementation status constants
