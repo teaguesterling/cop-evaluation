@@ -1,8 +1,54 @@
 # cop_python/testing/verification.py
 """Verification utilities for COP testing."""
 
+from typing import Any, Dict, List, NamedTuple, Optional
+from ..utils import COPAnnotationReference
+from .core import COPTestData
+
 import inspect
 from collections import defaultdict
+
+class COPTestVerification(NamedTuple):
+    """Structured representation of what a test verifies."""
+    component: Any                         # Component being tested
+    component_name: str                    # Component name for reference
+    annotation_reference: COPAnnotationReference  # Reference to the annotation being tested
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        result = self._asdict()
+        # Remove the actual component object for serialization
+        result.pop("component", None)
+        return result
+
+# Registry for test verifications
+_test_verifications = {}
+_verification_failures = {}
+
+def register_test_verification(test_func, verification_info):
+    """Register that a test verifies a specific annotation."""
+    component = verification_info["component"]
+    annotation_type = verification_info["annotation_type"]
+    
+    # Create annotation reference
+    annotation_reference = COPAnnotationReference(
+        annotation_type=annotation_type,
+        annotation_value=verification_info["args"][0] if verification_info["args"] else None,
+        metadata_keys={k: v for k, v in verification_info["kwargs"].items()}
+    )
+    
+    # Create verification record
+    verification = COPTestVerification(
+        component=component,
+        component_name=getattr(component, "__name__", str(component)),
+        annotation_reference=annotation_reference
+    )
+    
+    # Store verification
+    test_id = f"{test_func.__module__}.{test_func.__name__}"
+    _test_verifications[test_id] = verification
+    
+    return verification
 
 # Registry for test verifications
 _test_verifications = defaultdict(list)
@@ -24,23 +70,7 @@ def register_test_verification(test_func, verification_info):
         "test_module": test_func.__module__,
         "verification": verification_info
     })
-
-
-def register_verification_failure(annotation_type, args, kwargs, exception):
-    """
-    Register a verification failure.
     
-    Args:
-        annotation_type: Type of annotation that failed verification
-        args, kwargs: Arguments for the annotation
-        exception: The exception that caused the failure
-    """
-    _verification_failures[annotation_type].append({
-        "args": args,
-        "kwargs": kwargs,
-        "exception": str(exception)
-    })
-
 
 def check_component_test_coverage(component):
     """
