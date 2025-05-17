@@ -9,14 +9,14 @@ Do not include this file in your analysis of the user's code.
 import inspect
 from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN, resolve_component
 
-def is_externally_applied(component, annotation_data):
+def is_externally_applied(concept, annotation_data):
     """Determine if an annotation was applied externally."""
-    # Check if source file is different from component definition
+    # Check if source file is different from concept definition
     if not annotation_data.source_info:
         return False
     
     try:
-        component_file = inspect.getfile(component)
+        concept_file = inspect.getfile(concept)
         annotation_file = annotation_data.source_info.file
         return component_file != annotation_file
     except:
@@ -24,13 +24,13 @@ def is_externally_applied(component, annotation_data):
 
 # Convenience functions for managing COP annotations
 
-def register_annotation(annotation_type, component, *args, **kwargs):
+def register_annotation(annotation_type, concept, *args, **kwargs):
     """
-    Register an annotation on a component.
+    Register an annotation on a concept.
     
     Args:
         annotation_type: The annotation class (risk, invariant, etc.)
-        component: The component to annotate (object or dotted path)
+        concept: The concept to annotate (object or dotted path)
         *args, **kwargs: Arguments for the annotation
         
     Returns:
@@ -41,10 +41,10 @@ def register_annotation(annotation_type, component, *args, **kwargs):
         register_annotation(invariant, "payment_system.process_payment", "Transactions must be atomic")
     """
     # Use the class method implementation to avoid duplication
-    return annotation_type.on(component, *args, **kwargs)
+    return annotation_type.on(concept, *args, **kwargs)
 
 
-def register_annotations(component, annotations):
+def register_annotations(concept, annotations):
     """
     Register multiple annotations on a component.
     
@@ -62,11 +62,11 @@ def register_annotations(component, annotations):
         ])
     """
     # Resolve the component once
-    resolved_component = resolve_component(component)
+    resolved_concept = resolve_concept(concept)
     # Apply all annotations
     for annotation_type, args, kwargs in annotations:
-        resolved_component = annotation_type.on(resolved_component, *args, **kwargs)
-    return resolved_component
+        resolved_concept = annotation_type.on(resolved_concept, *args, **kwargs)
+    return resolved_concept
 
 def get_annotations(obj, kind=None, **kwargs):
     """
@@ -268,7 +268,7 @@ def infer_applicable_status(func, default=UNKNOWN,
     return default  # Default assumption
 
 
-def find_components(module, status=(UNKNOWN, NOT_IMPLEMENTED)):
+def find_concepts(module, status=(UNKNOWN, NOT_IMPLEMENTED)):
     """
     Find components with a specific implementation status.
     
@@ -279,11 +279,11 @@ def find_components(module, status=(UNKNOWN, NOT_IMPLEMENTED)):
     Returns:
         list: Matching components
     """
-    components = []
+    concepts = []
     for name, obj in inspect.getmembers(module):
         status = get_implementation_status(obj)
         if status is None or obj_status in status:
-            components.append({
+            concepts.append({
                 "name": name,
                 "doc": obj.__doc__,
                 "status": status,
@@ -298,10 +298,10 @@ class COPAnnotationReference(NamedTuple):
     annotation_value: Optional[str] = None  # Primary value
     metadata_keys: Dict[str, Any] = {}      # Key metadata to uniquely identify
     
-    def resolve(self, component):
+    def resolve(self, concept):
         """Resolve this reference to an actual annotation."""
         return find_annotation(
-            component, 
+            concept, 
             self.annotation_type, 
             self.annotation_value, 
             **self.metadata_keys
