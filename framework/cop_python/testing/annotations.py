@@ -36,14 +36,13 @@ def get_current_annotation_type():
 
 class COPTestData(NamedTuple):
     """Structured representation of a COP test."""
-    test_id: str                            # Fully qualified test identifier (module.class.method)
-    annotation_value: Optional[str] = None  # Value of the annotation being tested
-    annotation_metadata: Optional[Dict[str, Any]] = None  # Annotation properties
+    test_id: str                                    # Fully qualified test identifier (module.class.method)
+    anootation: Optional[COPAnnotationData] = None  # The COP annotation being tested
     test_metadata: Optional[Dict[str, Any]] = None  # Test-specific metadata
-    externalized: bool = False              # Whether test link was defined outside component
-    last_run: Optional[str] = None          # Timestamp of last execution
-    result: Optional[str] = None            # Result of last execution (PASS/FAIL)
-    source_info: Optional[Any] = None       # Source location information
+    externalized: bool = False                      # Whether test link was defined outside component
+    last_run: Optional[str] = None                  # Timestamp of last execution
+    result: Optional[str] = None                    # Result of last execution (PASS/FAIL)
+    source_info: Optional[Any] = None               # Source location information
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert test data to dictionary format for serialization."""
@@ -69,9 +68,6 @@ def _add_test_record(component, test_func, annotation_type, annotation_value=Non
     Returns:
         COPTestData object representing the created test record
     """
-    # Ensure component has a __cop_tests__ attribute
-    if not hasattr(component, "__cop_tests__"):
-        setattr(component, "__cop_tests__", COPNamespace())
     # Get module and name info for test identification
     module_name = test_func.__module__
     func_name = test_func.__name__
@@ -93,8 +89,7 @@ def _add_test_record(component, test_func, annotation_type, annotation_value=Non
         result=None
     )
     # Get list for this annotation type
-    tests_list = getattr(component.__cop_tests__, annotation_type)    
-    # Add new record if not found
+    tests_list _get_or_create_tests(component)[annotation_type]
     tests_list.append(test_record)
     return test_record
 
@@ -117,7 +112,19 @@ class COPTestVerification(NamedTuple):
         return result
 
 # Helper functions for test information
+def _get_or_create_tests(test_func_or_class):
+    """Get or create the test info namespace for a test function or class."""
+    if not hasattr(test_func_or_class, "__cop_tests__"):
+        test_info = COPNamespace(verifications=[], metadata={})
+        setattr(test_func_or_class, "__cop_tests__", test_info)
+    return getattr(test_func_or_class, "__cop_tests__")
 
+def _get_test_namespace(test_func_or_class):
+    """Get or create the test info namespace for a test function or class."""
+    if hasattr(test_func_or_class, "__cop_tests__"):
+        return getattr(test_func_or_class, "__cop_tests__")
+    else:
+        return COPNamespace(verifications=[], metadata={})
 
 
 # Use utility functions for test info operations
