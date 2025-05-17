@@ -2,24 +2,35 @@ import importlib
 import inspect
 import threading
 import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, NamedTuple
 
-class SourceInfo:
+
+class SourceInfo(NamedTuple):
     """Source code location information."""
-    def __init__(self, file: str, line: int, function: str, module: Optional[str] = None):
-        self.file = file
-        self.line = line
-        self.function = function
-        self.module = module
+    file: str                      # Source file path
+    line: int                      # Line number
+    function: str                  # Function name
+    module: Optional[str] = None   # Module name (optional)
+
+
+class TraceEntry(NamedTuple):
+    """Structured representation of a trace entry."""
+    action: str                               # Action performed (enter_context, exit_context)
+    annotation_type: str                      # Type of annotation (intent, risk, etc.)
+    timestamp: str                            # ISO-format timestamp
+    source_info: Optional[SourceInfo] = None  # Source location information
+    args: Optional[Tuple] = None              # Annotation arguments (if available)
+    kwargs: Optional[Dict[str, Any]] = {}     # Annotation keyword arguments
+    extras: Optional[Dict[str, Any]] = {}     # Additional trace-specific information
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        return {
-            "file": self.file,
-            "line": self.line,
-            "function": self.function,
-            "module": self.module
-        }
+        """Convert trace entry to dictionary format for serialization."""
+        result = self._asdict()
+        # Convert nested SourceInfo to dict if present
+        if self.source_info:
+            result["source_info"] = self.source_info._asdict()
+        return result
+        
 
 class COPSystem:
     """Base class for COP system implementations."""
@@ -48,26 +59,34 @@ class COPSystem:
         """Get all contexts of a specific type."""
         raise NotImplementedError()
 
-class DisabledCOPSystem(COPSystem):
+
+class NoOpCOPSystem(COPSystem):
     """COP system that does nothing (disabled mode)."""
     
     def is_enabled(self) -> bool:
+        """Check if the system is enabled."""
         return False
-    
+
     def is_tracing(self) -> bool:
+        """Check if the system is tracing source positions."""
         return False
-    
+
     def get_source_info(self, skip_frames: int = 1) -> Optional[SourceInfo]:
+        """Placeholder for source information for the current call site."""
         return None
     
     def push_context(self, context_type: str, context: Any) -> None:
+        """No-op implementation."""
         pass
     
     def pop_context(self, context_type: str) -> None:
+        """No-op implementation."""
         pass
     
     def get_contexts(self, context_type: str) -> List:
+        """Return empty list."""
         return []
+
 
 class StandardCOPSystem(COPSystem):
     """Standard COP system implementation."""
@@ -75,48 +94,19 @@ class StandardCOPSystem(COPSystem):
     def __init__(self):
         """Initialize the COP system."""
         self.contexts = threading.local()
+
     
     def is_enabled(self) -> bool:
+        """Check if the system is enabled."""
         return True
-    
+
     def is_tracing(self) -> bool:
+        """Check if the system is tracing source positions."""
         return False
-    
+
     def get_source_info(self, skip_frames: int = 1) -> Optional[SourceInfo]:
-        """
-        Get source information for the current call site.
-        
-        Args:
-            skip_frames: Number of frames to skip, not including this function
-                - Use 1 for immediate caller (default)
-                - Use 2 for context manager
-                - Use 3 for annotation initialization
-                       
-        Returns:
-            SourceInfo object with source location
-        """
-        # Get the appropriate frame based on skip_frames
-        frame = inspect.currentframe()
-        for _ in range(skip_frames + 1):  # +1 for this function
-            if frame is None:
-                break
-            frame = frame.f_back
-            
-        if frame is None:
-            return None
-            
-        # Extract the source info
-        frame_info = inspect.getframeinfo(frame)
-        module_name = None
-        if frame.f_globals and "__name__" in frame.f_globals:
-            module_name = frame.f_globals["__name__"]
-            
-        return SourceInfo(
-            file=frame_info.filename,
-            line=frame_info.lineno,
-            function=frame_info.function,
-            module=module_name
-        )
+        """Placeholder for source information for the current call site."""
+        return None
     
     def push_context(self, context_type: str, context: Any) -> None:
         """Push a context to its stack."""
@@ -142,6 +132,7 @@ class StandardCOPSystem(COPSystem):
             return getattr(self.contexts, stack_name)
         return []
 
+
 class TracingCOPSystem(StandardCOPSystem):
     """COP system with tracing capabilities."""
     
@@ -153,6 +144,42 @@ class TracingCOPSystem(StandardCOPSystem):
     def is_tracing(self) -> bool:
         """Check if the system is in tracing mode."""
         return True
+
+    def get_source_info(self, skip_frames: int = 1) -> Dict:
+        """
+        Get source information for the current call site.
+        
+        Args:
+        skip_frames: Number of frames to skip, not including this function
+            - Use 1 for immediate caller (default)
+            - Use 2 for context manager 
+            - Use 3 for annotation initialization
+                       
+        Returns:
+            Dict with source info
+        """
+        # Get the appropriate frame based on skip_frames
+        frame = inspect.currentframe()
+        for _ in range(skip_frames + 1):  # +1 for this function's frame
+            if frame is None:
+                break
+            frame = frame.f_back
+            
+        if frame is None:
+            return {}
+            
+        # Extract the source info
+        frame_info = inspect.getframeinfo(frame)
+        module_name = None
+        if frame.f_globals and "__name__" in frame.f_globals:
+            module_name = frame.f_globals["__name__"]
+            
+        return SourceInfo(
+            file=frame_info.filename,
+            line=frame_info.lineno,
+            function=frame_info.function,
+            module=module_name
+        )
     
     def push_context(self, context_type: str, context: Any) -> None:
         """Push a context to its stack with tracing."""
@@ -179,7 +206,7 @@ class TracingCOPSystem(StandardCOPSystem):
             source_info = self.get_source_info(skip_frames=2)  # Skip pop_context and caller
             self._add_trace("exit_context", context_type, context, source_info)
     
-    def _add_trace(self, action: str, annotation_type: str, 
+        def _add_trace(self, action: str, annotation_type: str, 
                   annotation: Any, source_info: SourceInfo) -> None:
         """
         Add a trace entry.
@@ -195,20 +222,18 @@ class TracingCOPSystem(StandardCOPSystem):
         kwargs = getattr(annotation, "kwargs", {})
         
         # Create the trace entry
-        trace = {
-            "action": action,
-            "annotation_type": annotation_type,
-            "timestamp": datetime.datetime.now().isoformat(),
-            "args": args,
-            "kwargs": kwargs
-        }
-        
-        if source_info:
-            trace["source_info"] = source_info.to_dict()
+        trace = TraceEntry(
+            action=action,
+            annotation_type=annotation_type,
+            timestamp=datetime.datetime.now().isoformat(),
+            source_info=source_info,
+            args=args,
+            kwargs=kwargs
+        )
         
         self.traces.append(trace)
     
-    def get_traces(self, as_dict: bool = False) -> List[Dict]:
+    def get_traces(self, as_dict: bool = False) -> Union[List[TraceEntry], List[Dict]]:
         """
         Get the collected traces.
         
@@ -216,38 +241,44 @@ class TracingCOPSystem(StandardCOPSystem):
             as_dict: Whether to convert traces to dictionary format
             
         Returns:
-            List of trace dictionaries
+            List of TraceEntry objects or dictionaries
         """
+        if as_dict:
+            return [trace.to_dict() for trace in self.traces]
         return self.traces
 
-# Create system instances
-DISABLED = DisabledCOPSystem()
-STANDARD = StandardCOPSystem()
-TRACING = TracingCOPSystem()
 
-# Default system (can be changed at runtime)
-_current_system = STANDARD
+DISABLED = NoOpCOPSystem()
+ENABLED = StandardCOPSystem()
+
+_current_system = DISABLED
+
 
 def get_system() -> COPSystem:
     """Get the current COP system."""
     return _current_system
+
 
 def set_system(system: COPSystem) -> None:
     """Set the current COP system."""
     global _current_system
     _current_system = system
 
+
 def enable_cop() -> None:
     """Enable COP annotations."""
     set_system(STANDARD)
+
 
 def enable_cop_tracing() -> None:
     """Enable COP annotations with tracing."""
     set_system(TRACING)
 
+
 def disable_cop() -> None:
     """Disable COP annotations."""
     set_system(DISABLED)
+
 
 def resolve_component(component: Union[Any, str], 
                      base_module: Optional[str] = None) -> Any:
