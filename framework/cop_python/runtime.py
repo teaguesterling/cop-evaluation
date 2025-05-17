@@ -89,49 +89,60 @@ class NoOpCOPSystem(COPSystem):
 
 
 class StandardCOPSystem(COPSystem):
-    """Standard COP system implementation."""
-    
     def __init__(self):
         """Initialize the COP system."""
-        self.contexts = threading.local()
-
+        # Thread-local COPNamespace to store all contexts
+        self.thread_contexts = threading.local()
+        # Initialize empty namespace on first access
+        if not hasattr(self.thread_contexts, "contexts"):
+            self.thread_contexts.contexts = COPNamespace()
     
-    def is_enabled(self) -> bool:
-        """Check if the system is enabled."""
-        return True
-
-    def is_tracing(self) -> bool:
-        """Check if the system is tracing source positions."""
-        return False
-
-    def get_source_info(self, skip_frames: int = 1) -> Optional[SourceInfo]:
-        """Placeholder for source information for the current call site."""
-        return None
+    @property
+    def contexts(self):
+        """Access the context namespace, initializing if needed."""
+        if not hasattr(self.thread_contexts, "contexts"):
+            self.thread_contexts.contexts = COPNamespace()
+        return self.thread_contexts.contexts
     
     def push_context(self, context_type: str, context: Any) -> None:
         """Push a context to its stack."""
-        stack_name = f"{context_type}_stack"
-        if not hasattr(self.contexts, stack_name):
-            setattr(self.contexts, stack_name, [])
-        
-        stack = getattr(self.contexts, stack_name)
-        stack.append(context)
+        self.contexts.get(context_type).append(context)
     
     def pop_context(self, context_type: str) -> None:
         """Pop a context from its stack."""
-        stack_name = f"{context_type}_stack"
-        if hasattr(self.contexts, stack_name):
-            stack = getattr(self.contexts, stack_name)
-            if stack:
-                stack.pop()
+        stack = self.contexts.get(context_type)
+        if stack:
+            stack.pop()
     
     def get_contexts(self, context_type: str) -> List:
         """Get all contexts of a specific type."""
-        stack_name = f"{context_type}_stack"
-        if hasattr(self.contexts, stack_name):
-            return getattr(self.contexts, stack_name)
-        return []
-
+        return self.contexts.get(context_type)
+    
+    def get_current_context(self, context_type: str) -> Optional[Any]:
+        """Get the most recent context of a specific type."""
+        stack = self.contexts.get(context_type)
+        return stack[-1] if stack else None
+    
+    def get_all_current_contexts(self) -> Dict[str, Any]:
+        """
+        Get the currently active contexts for all types.
+        
+        Returns:
+            Dict mapping context types to their most recent context
+        """
+        current_contexts = {}
+        
+        # Iterate through all attributes of the namespace
+        for attr_name in dir(self.contexts):
+            if attr_name.startswith('_'):
+                continue
+                
+            stack = getattr(self.contexts, attr_name)
+            if stack:  # Only include non-empty stacks
+                current_contexts[attr_name] = stack[-1]
+                
+        return current_contexts
+        
 
 class TracingCOPSystem(StandardCOPSystem):
     """COP system with tracing capabilities."""
@@ -280,42 +291,42 @@ def disable_cop() -> None:
     set_system(DISABLED)
 
 
-def resolve_component(component: Union[Any, str], 
-                     base_module: Optional[str] = None) -> Any:
+def resolve_concept(concept: Union[Any, str], 
+                    base_module: Optional[str] = None) -> Any:
     """
-    Resolve a component from an object or dotted path string.
+    Resolve a concept from an object or dotted path string.
     
     Args:
-        component: The component to resolve. Can be an actual object or a 
+        concept: The concept to resolve. Can be an actual object or a 
                   dotted path string (e.g., "module.submodule.component")
         base_module: Optional base module to use for relative imports
         
     Returns:
-        The resolved component object
+        The resolved concept object
         
     Raises:
-        ValueError: If the component cannot be resolved
+        ValueError: If the concept cannot be resolved
         
     Examples:
         # Resolve from object (returns the same object)
-        resolve_component(process_payment)
+        resolve_concept(process_payment)
         
         # Resolve from absolute path
-        resolve_component("payment_system.process_payment")
+        resolve_concept("payment_system.process_payment")
         
         # Resolve from relative path with base module
-        resolve_component("process_payment", base_module="payment_system")
+        resolve_concept("process_payment", base_module="payment_system")
     """
-    # If component is already an object (not a string), return it directly
-    if not isinstance(component, str):
-        return component
+    # If concept is already an object (not a string), return it directly
+    if not isinstance(concept, str):
+        return concept
     
     try:
         # Handle relative imports with base_module
-        if base_module and '.' not in component:
-            full_path = f"{base_module}.{component}"
+        if base_module and '.' not in concept:
+            full_path = f"{base_module}.{concept}"
         else:
-            full_path = component
+            full_path = concept
         
         # Split into module path and attribute name
         if '.' in full_path:
@@ -332,4 +343,4 @@ def resolve_component(component: Union[Any, str],
             return importlib.import_module(full_path)
             
     except (ImportError, AttributeError, ValueError) as e:
-        raise ValueError(f"Could not resolve component path '{component}': {e}")
+        raise ValueError(f"Could not resolve concept path '{concept}': {e}")
