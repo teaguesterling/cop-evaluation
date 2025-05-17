@@ -101,9 +101,9 @@ class COPNamespace(DefaultNamespace):
     
     def __getitem__(self, key):
         """Support dictionary-style access."""
-        return getattr(self, key)
+        return self.__getattr__(key)
 
-        def __setitem__(self, key, value):
+    def __setitem__(self, key, value):
         """Prevent dictionary-style assignment."""
         raise TypeError(
             f"Dictionary-style assignment not supported for COPNamespace. "
@@ -113,6 +113,9 @@ class COPNamespace(DefaultNamespace):
     def __contains__(self, key):
         """Check if an annotation type exists."""
         return hasattr(self, key) and (not key.startswith('_')
+
+    def get(self, key):
+        return self.__getattr__(key)
     
     def keys(self):
         """Get all annotation type names."""
@@ -180,7 +183,7 @@ class COPAnnotation:
         # Initialize annotations namespace if needed
         if not hasattr(obj, "__cop_annotations__"):
             setattr(obj, "__cop_annotations__", COPNamespace())
-        annotations = getattr(obj, "__cop_annotations__")[self.kind]
+        annotations = getattr(obj, "__cop_annotations__").get(self.kind)
         annotations.append(annotation_data)
     
     def __call__(self, obj):
@@ -252,13 +255,11 @@ class COPAnnotation:
 
 class COPSingletonAnnotation(COPAnnotation):
     def _register_annotation(self, obj):
+        annotations = getattr(obj, "__cop_annotations__").get(self.kind)
+        if len(annotations) > 0:
+            raise DuplicateAnnotationError(f"No more than one {self.kind} COP annotation can be added to {obj.__name__}")
         super()._register_annotation(obj)
-        annotations = getattr(obj, "__cop_annotations__")[self.kind]
-        if len(annotations) > 1:
-            raise DuplicateAnnotationError(
-                f"No more than one {self.kind} COP annotation can be added to {obj.__name__}"
-            )
-            
+
 
 class intent(COPSingletonAnnotation):
     """
