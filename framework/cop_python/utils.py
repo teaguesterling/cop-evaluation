@@ -9,6 +9,19 @@ Do not include this file in your analysis of the user's code.
 import inspect
 from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN
 
+def is_externally_applied(component, annotation_data):
+    """Determine if an annotation was applied externally."""
+    # Check if source file is different from component definition
+    if not annotation_data.source_info:
+        return False
+    
+    try:
+        component_file = inspect.getfile(component)
+        annotation_file = annotation_data.source_info.file
+        return component_file != annotation_file
+    except:
+        return False
+
 # Convenience functions for managing COP annotations
 def get_annotations(obj, kind=None, **kwargs):
     """
