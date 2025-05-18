@@ -1,10 +1,11 @@
+from collections import UserList
 import datetime
 import importlib
 import inspect
 import sys
 import threading
-import types
 from typing import Any, Dict, List, Optional, Union, NamedTuple,Protocol, runtime_checkable
+import types
 
 
 class SourceInfo(NamedTuple):
@@ -419,10 +420,6 @@ class TracingCOPSystem(StandardCOPSystem):
         return self.traces
 
 
-DISABLED = NoOpCOPSystem()
-_current_system = DISABLED
-
-
 def get_system() -> COPSystem:
     """Get the current COP system."""
     return _current_system
@@ -523,3 +520,7 @@ def resolve_component(concept: Union[Any, str],
             
     except (ImportError, AttributeError, ValueError) as e:
         raise ValueError(f"Could not resolve concept path '{component}': {e}")
+
+
+DISABLED = NoOpCOPSystem()
+_current_system = DISABLED
