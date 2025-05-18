@@ -61,8 +61,8 @@ understand the code wastes context, reduces your helpfulness, and leads
 to incorrect assumptions about what functionality actually exists.
 """
 from .core import (
-    ConceptAnnotations,   # Collection of related annotations (can be defined `on` or used to `assign_to` other components)
-    concept_annotations,  # context manager assigning all annotations to the object of the containing scope
+    ConceptAnnotations,   # Collection of related annotations to be applied or reused
+    concept_annotations,  # Means all annotations apply to parent scope of the `with` block
 )
 from .annotations import (
     # What and Why:
