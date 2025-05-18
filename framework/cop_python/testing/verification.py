@@ -1,246 +1,375 @@
-# cop_python/testing/verification.py
-"""Verification utilities for COP testing."""
+"""
+Verification utilities for COP testing.
 
-from typing import Any, Dict, List, NamedTuple, Optional
+This module provides tools for tracking and reporting on test verification
+of COP annotations.
+"""
+
+import enum
+import inspect
+import datetime
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Union
+
+from ..runtime import get_system
 from ..utils import COPAnnotationReference
 from .core import COPTestData
 
-import inspect
-from collections import defaultdict
+# Define result enum for better type safety
+class VerificationResult(enum.Enum):
+    """Possible results for a verification."""
+    PASSED = "PASSED"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
+    ERROR = "ERROR"
 
-class COPTestVerification(NamedTuple):
-    """Structured representation of what a test verifies."""
-    component: Any                         # Component being tested
-    component_name: str                    # Component name for reference
-    annotation_reference: COPAnnotationReference  # Reference to the annotation being tested
+class COPVerificationRecord(NamedTuple):
+    """Record of a verification result for a COP annotation."""
+    test_id: str                                           # Fully qualified test ID
+    annotation_reference: COPAnnotationReference           # Reference to the annotation
+    component_id: str                                      # Fully qualified component ID 
+    component: Any                                         # Reference to the actual component
+    test_data: Optional[COPTestData] = None                # The test data that defined this verification
+    result: Optional[VerificationResult] = None            # Result of the verification
+    timestamp: Optional[str] = None                        # When verification occurred
+    message: Optional[str] = None                          # Additional result information
+    exception: Optional[Exception] = None                  # Exception if verification failed
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
-        result = self._asdict()
-        # Remove the actual component object for serialization
-        result.pop("component", None)
+        result = {
+            "test_id": self.test_id,
+            "annotation_reference": {
+                "annotation_type": self.annotation_reference.annotation_type,
+                "annotation_value": self.annotation_reference.annotation_value,
+                "metadata_keys": self.annotation_reference.metadata_keys
+            },
+            "component_id": self.component_id,
+            "result": self.result.value if self.result else None,
+            "timestamp": self.timestamp,
+            "message": self.message
+        }
+        
+        if self.exception:
+            result["exception"] = str(self.exception)
+            
         return result
 
-# Registry for test verifications
-_test_verifications = {}
-_verification_failures = {}
+# Extend runtime system with verification context
+def _get_verification_registry():
+    """Get or create the verification registry in the runtime system."""
+    system = get_system()
+    registry_key = "verification_registry"
+    
+    # Check if the registry exists in the context
+    registry = None
+    contexts = system.get_contexts(registry_key)
+    if contexts:
+        registry = contexts[-1]
+    
+    # Create if it doesn't exist
+    if not registry:
+        from ..core import COPNamespace
+        registry = COPNamespace()
+        system.push_context(registry_key, registry)
+    
+    return registry
 
-def register_test_verification(test_func, verification_info):
-    """Register that a test verifies a specific annotation."""
-    component = verification_info["component"]
-    annotation_type = verification_info["annotation_type"]
-    
-    # Create annotation reference
-    annotation_reference = COPAnnotationReference(
-        annotation_type=annotation_type,
-        annotation_value=verification_info["args"][0] if verification_info["args"] else None,
-        metadata_keys={k: v for k, v in verification_info["kwargs"].items()}
-    )
-    
-    # Create verification record
-    verification = COPTestVerification(
-        component=component,
-        component_name=getattr(component, "__name__", str(component)),
-        annotation_reference=annotation_reference
-    )
-    
-    # Store verification
-    test_id = f"{test_func.__module__}.{test_func.__name__}"
-    _test_verifications[test_id] = verification
-    
-    return verification
-
-# Registry for test verifications
-_test_verifications = defaultdict(list)
-_verification_failures = defaultdict(list)
-
-def register_test_verification(test_func, verification_info):
+def register_test_verification(test_func, component, annotation_reference, test_data=None):
     """
     Register that a test verifies a specific annotation.
     
     Args:
         test_func: The test function
-        verification_info: Information about what's being verified
+        component: The component being verified
+        annotation_reference: Reference to the annotation being verified
+        test_data: Optional test data record
+    
+    Returns:
+        Created verification record
     """
-    component = verification_info["component"]
-    component_key = f"{component.__module__}.{verification_info['component_name']}"
+    # Generate test ID
+    test_id = f"{test_func.__module__}.{test_func.__name__}"
+    if hasattr(test_func, "__self__") and test_func.__self__ is not None:
+        class_name = test_func.__self__.__class__.__name__
+        test_id = f"{test_func.__module__}.{class_name}.{test_func.__name__}"
     
-    _test_verifications[component_key].append({
-        "test": test_func.__name__,
-        "test_module": test_func.__module__,
-        "verification": verification_info
-    })
+    # Generate component ID
+    component_id = getattr(component, "__qualname__", None)
+    if not component_id:
+        component_id = f"{component.__module__}.{component.__name__}" if hasattr(component, "__name__") else str(component)
     
+    # Create verification record
+    record = COPVerificationRecord(
+        test_id=test_id,
+        annotation_reference=annotation_reference,
+        component_id=component_id,
+        component=component,
+        test_data=test_data
+    )
+    
+    # Store in registry
+    registry = _get_verification_registry()
+    
+    # Initialize if needed
+    anno_type = annotation_reference.annotation_type
+    if not hasattr(registry, anno_type):
+        setattr(registry, anno_type, {})
+    
+    type_registry = getattr(registry, anno_type)
+    
+    # Use component_id as key for better lookup
+    if component_id not in type_registry:
+        type_registry[component_id] = []
+    
+    type_registry[component_id].append(record)
+    
+    return record
 
-def check_component_test_coverage(component):
+def record_verification_result(test_func, component, annotation_reference, 
+                              result, message=None, exception=None):
     """
-    Check test coverage for all annotations on a component.
+    Record the result of a verification.
     
     Args:
-        component: The component to check
+        test_func: The test function
+        component: The component being verified
+        annotation_reference: Reference to the annotation being verified
+        result: Result of the verification (PASSED, FAILED, etc.)
+        message: Optional message describing the result
+        exception: Optional exception if verification failed
+    """
+    # Generate IDs for lookup
+    test_id = f"{test_func.__module__}.{test_func.__name__}"
+    if hasattr(test_func, "__self__") and test_func.__self__ is not None:
+        class_name = test_func.__self__.__class__.__name__
+        test_id = f"{test_func.__module__}.{class_name}.{test_func.__name__}"
+    
+    component_id = getattr(component, "__qualname__", None)
+    if not component_id:
+        component_id = f"{component.__module__}.{component.__name__}" if hasattr(component, "__name__") else str(component)
+    
+    # Find matching verification record
+    registry = _get_verification_registry()
+    anno_type = annotation_reference.annotation_type
+    
+    if hasattr(registry, anno_type) and component_id in getattr(registry, anno_type):
+        records = getattr(registry, anno_type)[component_id]
+        
+        for i, record in enumerate(records):
+            if record.test_id == test_id and record.annotation_reference == annotation_reference:
+                # Create updated record
+                updated_record = COPVerificationRecord(
+                    test_id=record.test_id,
+                    annotation_reference=record.annotation_reference,
+                    component_id=record.component_id,
+                    component=record.component,
+                    test_data=record.test_data,
+                    result=result,
+                    timestamp=datetime.datetime.now().isoformat(),
+                    message=message,
+                    exception=exception
+                )
+                
+                # Replace existing record
+                records[i] = updated_record
+                return updated_record
+    
+    # If no matching record, create a new one
+    record = COPVerificationRecord(
+        test_id=test_id,
+        annotation_reference=annotation_reference,
+        component_id=component_id,
+        component=component,
+        result=result,
+        timestamp=datetime.datetime.now().isoformat(),
+        message=message,
+        exception=exception
+    )
+    
+    # Store in registry
+    if not hasattr(registry, anno_type):
+        setattr(registry, anno_type, {})
+    
+    type_registry = getattr(registry, anno_type)
+    
+    if component_id not in type_registry:
+        type_registry[component_id] = []
+    
+    type_registry[component_id].append(record)
+    
+    return record
+
+def get_verification_results(component=None, annotation_type=None):
+    """
+    Get verification results, optionally filtered by component and annotation type.
+    
+    Args:
+        component: Optional component to filter by
+        annotation_type: Optional annotation type to filter by
         
     Returns:
-        dict: Coverage information for the component
+        List of verification records
     """
-    component_key = f"{component.__module__}.{component.__name__}"
+    registry = _get_verification_registry()
+    results = []
     
-    coverage = {
-        "component": component.__name__,
-        "invariants": [],
-        "risks": [],
-        "implementation_status": None,
-        "decisions": []
-    }
+    # Component ID for filtering
+    component_id = None
+    if component:
+        component_id = getattr(component, "__qualname__", None)
+        if not component_id:
+            component_id = f"{component.__module__}.{component.__name__}" if hasattr(component, "__name__") else str(component)
     
-    # Check invariant coverage
-    invariants = getattr(component, "__cop_invariants__", [])
-    for inv in invariants:
-        condition = inv["condition"] if isinstance(inv, dict) else inv
-        tests = find_tests_for_invariant(component_key, condition)
-        coverage["invariants"].append({
-            "invariant": condition,
-            "critical": inv.get("critical", False) if isinstance(inv, dict) else False,
-            "tests": tests,
-            "covered": len(tests) > 0
-        })
+    # Filter by annotation type if specified
+    types_to_check = [annotation_type] if annotation_type else dir(registry)
     
-    # Check risk coverage
-    risks = getattr(component, "__cop_risks__", [])
-    for risk in risks:
-        description = risk["description"] if isinstance(risk, dict) else risk
-        tests = find_tests_for_risk(component_key, description)
-        coverage["risks"].append({
-            "risk": description,
-            "severity": risk.get("severity", "MEDIUM") if isinstance(risk, dict) else "MEDIUM",
-            "tests": tests,
-            "covered": len(tests) > 0
-        })
+    for anno_type in types_to_check:
+        # Skip non-annotation attributes
+        if anno_type.startswith('_') or not hasattr(registry, anno_type):
+            continue
+        
+        type_registry = getattr(registry, anno_type)
+        
+        # Filter by component if specified
+        if component_id:
+            if component_id in type_registry:
+                results.extend(type_registry[component_id])
+        else:
+            # Add all records for this type
+            for component_records in type_registry.values():
+                results.extend(component_records)
     
-    # Check implementation status
-    status = getattr(component, "__cop_implementation_status__", None)
-    if status:
-        tests = find_tests_for_implementation_status(component_key, status)
-        coverage["implementation_status"] = {
-            "status": status,
-            "tests": tests,
-            "covered": len(tests) > 0
+    return results
+
+def clear_verification_registry():
+    """Clear the verification registry."""
+    system = get_system()
+    registry_key = "verification_registry"
+    
+    # Pop existing registry if present
+    if system.get_contexts(registry_key):
+        system.pop_context(registry_key)
+    
+    # Create fresh registry
+    from ..core import COPNamespace
+    registry = COPNamespace()
+    system.push_context(registry_key, registry)
+    
+    return registry
+
+def generate_verification_report(module=None):
+    """
+    Generate a verification report.
+    
+    Args:
+        module: Optional module to limit report scope
+        
+    Returns:
+        Dict with verification summary and details
+    """
+    # Get all annotations and their verification results
+    all_annotations = {}
+    verified_annotations = {}
+    failed_verifications = {}
+    unchecked_annotations = {}
+    
+    # If module specified, gather its components
+    components_to_check = []
+    if module:
+        for name, obj in inspect.getmembers(module):
+            # Check if object has any COP annotations
+            if hasattr(obj, "__cop_annotations__"):
+                components_to_check.append(obj)
+    
+    # For each component, check its annotations and verification status
+    for component in components_to_check:
+        component_id = getattr(component, "__qualname__", None)
+        if not component_id:
+            component_id = f"{component.__module__}.{component.__name__}" if hasattr(component, "__name__") else str(component)
+        
+        annotations = getattr(component, "__cop_annotations__")
+        all_component_annotations = []
+        
+        # Collect all annotations on the component
+        for anno_type in dir(annotations):
+            if anno_type.startswith('_'):
+                continue
+                
+            for anno in getattr(annotations, anno_type):
+                all_component_annotations.append({
+                    "type": anno_type,
+                    "value": anno.value,
+                    "metadata": anno.metadata
+                })
+        
+        # Store all annotations
+        all_annotations[component_id] = all_component_annotations
+        
+        # Get verification results for this component
+        verification_results = get_verification_results(component)
+        
+        # Group by annotation
+        verified = []
+        failed = []
+        
+        for result in verification_results:
+            anno_ref = result.annotation_reference
+            anno_info = {
+                "type": anno_ref.annotation_type,
+                "value": anno_ref.annotation_value,
+                "metadata": anno_ref.metadata_keys,
+                "test_id": result.test_id,
+                "result": result.result.value if result.result else None
+            }
+            
+            if result.result == VerificationResult.PASSED:
+                verified.append(anno_info)
+            elif result.result in (VerificationResult.FAILED, VerificationResult.ERROR):
+                failed.append(anno_info)
+        
+        # Store verified and failed annotations
+        if verified:
+            verified_annotations[component_id] = verified
+        if failed:
+            failed_verifications[component_id] = failed
+        
+        # Find unchecked annotations
+        checked_annotations = {(v["type"], v["value"]) for v in verified + failed}
+        unchecked = []
+        
+        for anno in all_component_annotations:
+            if (anno["type"], anno["value"]) not in checked_annotations:
+                unchecked.append(anno)
+        
+        if unchecked:
+            unchecked_annotations[component_id] = unchecked
+    
+    # Build report
+    report = {
+        "summary": {
+            "components_checked": len(all_annotations),
+            "annotations_total": sum(len(annos) for annos in all_annotations.values()),
+            "annotations_verified": sum(len(annos) for annos in verified_annotations.values()),
+            "annotations_failed": sum(len(annos) for annos in failed_verifications.values()),
+            "annotations_unchecked": sum(len(annos) for annos in unchecked_annotations.values())
+        },
+        "details": {
+            "all_annotations": all_annotations,
+            "verified_annotations": verified_annotations,
+            "failed_verifications": failed_verifications, 
+            "unchecked_annotations": unchecked_annotations
         }
-    
-    # Check decisions
-    decisions = getattr(component, "__cop_decisions__", [])
-    for decision in decisions:
-        if isinstance(decision, dict):
-            question = decision.get("question", "")
-            tests = find_tests_for_decision(component_key, question)
-            coverage["decisions"].append({
-                "question": question,
-                "answer": decision.get("answer", ""),
-                "tests": tests,
-                "covered": len(tests) > 0
-            })
-    
-    return coverage
-
-
-def find_tests_for_invariant(component_key, condition):
-    """Find tests that verify a specific invariant."""
-    tests = []
-    
-    for verification in _test_verifications[component_key]:
-        if verification["verification"]["annotation_type"] == "invariant":
-            if verification["verification"]["args"] and verification["verification"]["args"][0] == condition:
-                tests.append(verification["test"])
-    
-    return tests
-
-
-def find_tests_for_risk(component_key, description):
-    """Find tests that verify a specific risk."""
-    tests = []
-    
-    for verification in _test_verifications[component_key]:
-        if verification["verification"]["annotation_type"] == "risk":
-            if verification["verification"]["args"] and verification["verification"]["args"][0] == description:
-                tests.append(verification["test"])
-    
-    return tests
-
-
-def find_tests_for_implementation_status(component_key, status):
-    """Find tests that verify implementation status."""
-    tests = []
-    
-    for verification in _test_verifications[component_key]:
-        if verification["verification"]["annotation_type"] == "implementation_status":
-            if verification["verification"]["args"] and verification["verification"]["args"][0] == status:
-                tests.append(verification["test"])
-    
-    return tests
-
-
-def find_tests_for_decision(component_key, question):
-    """Find tests that verify a specific decision."""
-    tests = []
-    
-    for verification in _test_verifications[component_key]:
-        if verification["verification"]["annotation_type"] == "decision":
-            # Check args or kwargs for the question
-            if verification["verification"]["args"] and question in str(verification["verification"]["args"]):
-                tests.append(verification["test"])
-            elif verification["verification"]["kwargs"].get("question") == question:
-                tests.append(verification["test"])
-    
-    return tests
-
-
-def generate_verification_report(module):
-    """
-    Generate a verification report for a module.
-    
-    Args:
-        module: The module to analyze
-        
-    Returns:
-        dict: Verification report
-    """
-    # Find all components with COP annotations
-    components = []
-    for name, obj in inspect.getmembers(module):
-        if has_cop_annotations(obj):
-            components.append(obj)
-    
-    # Check coverage for each component
-    coverage_by_component = {}
-    for component in components:
-        coverage_by_component[component.__name__] = check_component_test_coverage(component)
-    
-    # Generate summary statistics
-    summary = {
-        "total_components": len(components),
-        "components_with_tests": sum(1 for c in coverage_by_component.values() 
-                                    if any(inv["covered"] for inv in c["invariants"]) or
-                                       any(risk["covered"] for risk in c["risks"]) or
-                                       (c["implementation_status"] and c["implementation_status"]["covered"]) or
-                                       any(dec["covered"] for dec in c["decisions"])),
-        "total_invariants": sum(len(c["invariants"]) for c in coverage_by_component.values()),
-        "tested_invariants": sum(sum(1 for inv in c["invariants"] if inv["covered"]) 
-                               for c in coverage_by_component.values()),
-        "total_risks": sum(len(c["risks"]) for c in coverage_by_component.values()),
-        "tested_risks": sum(sum(1 for risk in c["risks"] if risk["covered"]) 
-                          for c in coverage_by_component.values()),
-        "verification_failures": _verification_failures
     }
     
-    return {
-        "summary": summary,
-        "coverage": coverage_by_component
-    }
+    return report
 
+# Hooks for testing framework integration
 
-def has_cop_annotations(obj):
-    """Check if an object has COP annotations."""
-    return (hasattr(obj, "__cop_invariants__") or
-            hasattr(obj, "__cop_risks__") or
-            hasattr(obj, "__cop_implementation_status__") or
-            hasattr(obj, "__cop_decisions__") or
-            hasattr(obj, "__cop_intent__"))
+def set_up_test_run():
+    """Called at the start of a test run to set up verification tracking."""
+    clear_verification_registry()
+
+def finish_test_run():
+    """Called at the end of a test run to finalize verification tracking."""
+    # Can be extended to save results, etc.
+    return generate_verification_report()
