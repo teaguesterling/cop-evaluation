@@ -129,7 +129,8 @@ class Invariant(COPAnnotation):
             result = db.execute(query)
     """
     annotation_type = "invariant"
-    
+   
+    @classmethod 
     def create(self, condition: str, *, critical: bool=False, scope: str="always"):
         """
         Initialize invariant annotation.

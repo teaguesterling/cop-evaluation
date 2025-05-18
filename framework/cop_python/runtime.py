@@ -40,6 +40,7 @@ class TraceEntry(NamedTuple):
         return result
 
 
+@runtime_checkable
 class COPAnnotationProtocol(Protocol):
     @classmethod
     def get_kind(self) -> str: ...
@@ -74,7 +75,7 @@ class COPSystem:
     
     def get_source_info(self, skip_frames: int = 1) -> Optional[SourceInfo]:
         """Get source information for the current call site."""
-        raise NotImplementedError()
+        return NotImplementedError()
     
     def push_context(self, context_type: str, context: Any) -> None:
         """Push a context to its stack."""
@@ -237,13 +238,14 @@ class StandardCOPSystem(COPSystem):
     def is_tracing(self) -> bool:
         """Check if the system is tracing source positions."""
         return False  # Standard system doesn't do tracing
+    
+    def get_source_info(self, skip_frames: int = 1) -> Optional[SourceInfo]:
+        """Get source information for the current call site."""
+        return None  # Standard system doesn't track source info
 
-    @property
-    def contexts(self):
-        """Access the context namespace, initializing if needed."""
-        if not hasattr(self.thread_contexts, "contexts"):
-            self.thread_contexts.contexts = COPNamespace()
-        return self.thread_contexts.contexts
+    def get_source_info(self, skip_frames: int = 1) -> Optional[SourceInfo]:
+        """Get source information for the current call site."""
+        return None  # Standard system doesn't track source info
 
     def notify_annotation_created(self, annotation):
         """
@@ -295,6 +297,13 @@ class StandardCOPSystem(COPSystem):
         """Get all contexts of a specific type."""
         return self.contexts.get(context_type)
     
+    @property
+    def contexts(self):
+        """Access the context namespace, initializing if needed."""
+        if not hasattr(self.thread_contexts, "contexts"):
+            self.thread_contexts.contexts = COPNamespace()
+        return self.thread_contexts.contexts
+
     def get_current_context(self, context_type: str) -> Optional[Any]:
         """Get the most recent context of a specific type."""
         stack = self.contexts.get(context_type)
@@ -320,38 +329,6 @@ class StandardCOPSystem(COPSystem):
                 
         return current_contexts
 
-    def determine_scope(self, frame=None):
-        """
-        Determine the enclosing scope of the current execution context.
-        
-        Args:
-            frame: Optional frame to analyze (defaults to caller's frame)
-            
-        Returns:
-            The appropriate scope object (module, class, or function)
-        """
-        # Use caller's frame if none provided
-        if frame is None:
-            frame = inspect.currentframe().f_back
-        # Check if we're in a class definition
-        for var_name, var_value in frame.f_locals.items():
-            if (isinstance(var_value, type) and 
-                var_name in frame.f_code.co_names and 
-                var_value.__module__ == frame.f_globals.get('__name__')):
-                return var_value
-        # Check for function definition
-        if frame.f_code.co_name.startswith('<') and frame.f_code.co_name.endswith('>'):
-            context_info = inspect.getframeinfo(frame)
-            if context_info.code_context:
-                code_line = context_info.code_context[0].strip()
-                if code_line.startswith('def '):
-                    func_name = code_line.split('def ')[1].split('(')[0].strip()
-                    if func_name in frame.f_locals:
-                        return frame.f_locals[func_name]
-        
-        # Default to module scope
-        module_name = frame.f_globals['__name__']
-        return sys.modules[module_name]
 
 
 class TracingCOPSystem(StandardCOPSystem):
@@ -494,6 +471,41 @@ def enable_cop_tracing() -> None:
 def disable_cop() -> None:
     """Disable COP annotations."""
     set_system(DISABLED)
+
+
+def determine_scope(frame=None):
+    """
+    Determine the enclosing scope of the current execution context.
+    
+    Args:
+        frame: Optional frame to analyze (defaults to caller's frame)
+        
+    Returns:
+        The appropriate scope object (module, class, or function)
+    """
+    # Use caller's frame if none provided
+    if frame is None:
+        frame = inspect.currentframe().f_back
+    # Check if we're in a class definition
+    for var_name, var_value in frame.f_locals.items():
+        if (isinstance(var_value, type) and 
+            var_name in frame.f_code.co_names and 
+            var_value.__module__ == frame.f_globals.get('__name__')):
+            return var_value
+    # Check for function definition
+    # TODO: This is sloppy
+    if frame.f_code.co_name.startswith('<') and frame.f_code.co_name.endswith('>'):
+        context_info = inspect.getframeinfo(frame)
+        if context_info.code_context:
+            code_line = context_info.code_context[0].strip()
+            if code_line.startswith('def '):
+                func_name = code_line.split('def ')[1].split('(')[0].strip()
+                if func_name in frame.f_locals:
+                    return frame.f_locals[func_name]
+    
+    # Default to module scope
+    module_name = frame.f_globals['__name__']
+    return sys.modules[module_name]
 
 
 def _get_parent_scope(obj):

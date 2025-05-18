@@ -8,8 +8,7 @@ Focus only on the annotations in the user's code, not on how they're implemented
 """
 from collections import UserList
 import inspect
-from .runtime import COPAnnotationProtocol, COPNamespace, COPError, SourceInfo, _current_system, DISABLED
-import threading
+from .runtime import COPAnnotationProtocol, COPNamespace, COPError, SourceInfo, get_system, DISABLED, determine_scope, resolve_component
 from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union, Protocol, runtime_checkable, ClassVar
 
 
@@ -63,12 +62,12 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
     def __new__(cls, value=None, **kwargs):
         """Create a new annotation instance."""
         # Check for disabled mode
-        if _current_system is DISABLED or not _current_system.is_enabled():
+        system = get_system()
+        if system is DISABLED or not system.is_enabled():
             return _do_nothing_decorator
-        
-        source_info = _current_system.get_source_info(skip_frames=2)
+        source_info = system.get_source_info(skip_frames=2)
         instance = super().__new__(cls, value, kwargs, source_info)
-        _current_system.notify_annotation_created(instance)
+        system.notify_annotation_created(instance)
         return instance
 
     @classmethod
@@ -97,13 +96,14 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
         """
         # Create the annotation
         annotation = cls(*args, **kwargs)
-        resolved_concept = resolve_concept(concept)
+        resolved_concept = resolve_component(concept)
         annotated_concept = annotation(resolved_concept)
         return annotated_concept
 
     @classmethod
     def create(cls, value, **kwargs):
-        if _current_system is DISABLED or not _current_system.is_enabled():
+        system = get_system()
+        if system is DISABLED or not system.is_enabled():
             return _do_nothing_decorator
         else:
             return cls(value, **kwargs)
@@ -116,7 +116,7 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
         """Apply this annotation to an object."""
         # Ensure annotations namespace exists
         if not hasattr(obj, "__cop_annotations__"):
-            setattr(obj, "__cop_annotations__", COPNamespace(default_factory=COPAnnotations))
+            setattr(obj, "__cop_annotations__", COPNamespace(default_factory=ConceptAnnotations))
         annotations = getattr(obj, "__cop_annotations__")
         annotations.get(self.kind).append(self)
         return obj
@@ -124,7 +124,8 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
     def __call__(self, obj=None):
         """Apply annotation to an object."""
         # Quick return if disabled
-        if _current_system is DISABLED or not _current_system.is_enabled():
+        system = get_system()
+        if system is DISABLED or not system.is_enabled():
             return obj if obj is not None else self
         
         if obj is not None:
@@ -141,10 +142,11 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
         Returns:
             self, for use in the context
         """
-        # Short-circut with fast check for disabled
-        if _current_system is DISABLED or not _current_system.is_enabled():
+        # Short-circuit with fast check for disabled
+        system = get_system()
+        if system is DISABLED or not system.is_enabled():
             return self
-        _cop_system.push_context(self.get_kind(), self)
+        system.push_context(self.get_kind(), self)
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
@@ -159,18 +161,23 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
         Returns:
             False: Don't suppress exceptions
         """
-        # Short-circut with fast check for disabled
-        if _current_system is DISABLED or not _current_system.is_enabled():
-            _current_system.pop_context(self.get_kind())
+        # Short-circuit with fast check for disabled
+        system = get_system()
+        if system is DISABLED or not system.is_enabled():
+            return False  # Don't suppress exceptions
+        system.pop_context(self.get_kind())
         return False  # Don't suppress exceptions
         
 
 class COPSingletonAnnotation(COPAnnotation):
     def _apply_to_object(self, obj):
+        # Ensure annotations namespace exists
+        if not hasattr(obj, "__cop_annotations__"):
+            setattr(obj, "__cop_annotations__", COPNamespace(default_factory=ConceptAnnotations))
         annotations = getattr(obj, "__cop_annotations__").get(self.kind)
         if len(annotations) > 0:
-            raise DuplicateAnnotationError(f"No more than one {self.kind} COP annotation can be added to {obj.__name__}")
-        super()._register_annotation(obj)
+            raise DuplicateAnnotationError(f"No more than one {self.kind} COP annotation can be added on {obj!r}")
+        return super()._apply_to_object(obj)
 
 
 class ConceptAnnotations(UserList):
@@ -182,19 +189,20 @@ class ConceptAnnotations(UserList):
         self._detected_scope = None
     
     def __enter__(self):
-        # Determine scope (explicit or automatic)
-        if self._explicit_scope is None:
-            system = get_system()
-            self._detected_scope = system.determine_scope(inspect.currentframe().f_back)
-        
-        # Register as handler
         system = get_system()
+        if system is DISABLED or not system.is_enabled():
+            return self
+        elif self._explicit_scope is None:
+            frame = inspect.currentframe().f_back
+            self._detected_scope = determine_scope(frame)
         system.push_context("annotation_handler", self)
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Unregister
-        get_system().pop_context("annotation_handler")
+        system = get_system()
+        if not (system is DISABLED or not system.is_enabled()):
+            system.pop_context("annotation_handler")
         self._detected_scope = None
         return False
     
