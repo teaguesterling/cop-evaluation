@@ -2,7 +2,7 @@ import importlib
 import inspect
 import threading
 import datetime
-from typing import Any, Dict, List, Optional, Union, NamedTuple
+from typing import Any, Dict, List, Optional, Union, NamedTuple,Protocol, runtime_checkable
 
 
 class SourceInfo(NamedTuple):
@@ -30,6 +30,15 @@ class TraceEntry(NamedTuple):
         if self.source_info:
             result["source_info"] = self.source_info._asdict()
         return result
+
+
+@runtime_checkable
+class AnnotationHandler(Protocol):
+    """Protocol defining the interface for handling annotations."""
+    
+    def handle_annotation(self, annotation) -> None:
+        """Handle a newly created annotation."""
+        ...
         
 
 class COPSystem:
@@ -41,6 +50,10 @@ class COPSystem:
     
     def is_tracing(self) -> bool:
         """Check if the system is tracing source positions."""
+        raise NotImplementedError()
+
+    def notify_annotation_created(self, annotation: 'COPAnnotation'):
+        """Notify all contexts that implement AnnotationHandler of a new COPAnnotation""":
         raise NotImplementedError()
     
     def get_source_info(self, skip_frames: int = 1) -> Optional[SourceInfo]:
@@ -74,6 +87,9 @@ class NoOpCOPSystem(COPSystem):
     def get_source_info(self, skip_frames: int = 1) -> Optional[SourceInfo]:
         """Placeholder for source information for the current call site."""
         return None
+
+    def notify_annotation_created(self, annotation: 'COPAnnotation'):
+        pass
     
     def push_context(self, context_type: str, context: Any) -> None:
         """No-op implementation."""
@@ -96,13 +112,20 @@ class StandardCOPSystem(COPSystem):
         # Initialize empty namespace on first access
         if not hasattr(self.thread_contexts, "contexts"):
             self.thread_contexts.contexts = COPNamespace()
-    
+
     @property
     def contexts(self):
         """Access the context namespace, initializing if needed."""
         if not hasattr(self.thread_contexts, "contexts"):
             self.thread_contexts.contexts = COPNamespace()
         return self.thread_contexts.contexts
+
+    def notify_annotation_created(self, annotation: 'COPAnnotation'):
+        """Notify all handlers that an annotation was created."""
+        handlers = self.get_contexts("annotation_handler")
+        for handler in handlers:
+            if isinstance(handler, AnnotationHandler):
+                handler.handle_annotation(annotation)
     
     def push_context(self, context_type: str, context: Any) -> None:
         """Push a context to its stack."""
