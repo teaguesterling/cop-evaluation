@@ -1,6 +1,9 @@
-# testing/core.py
-
+import functools
+import inspect
+import threading
+from ..runtime import get_system
 from ..utils import COPAnnotationReference
+
 
 # Exception classes
 class COPAnnotationViolation(AssertionError):
@@ -27,41 +30,6 @@ class IntentViolation(COPAnnotationViolation):
     """Raised when code doesn't fulfill its intent."""
     pass
 
-# Context tracking mechanism
-_test_context = threading.local()
-
-def set_current_component(component):
-    """Set the current component being tested."""
-    _test_context.current_component = component
-
-def get_current_component():
-    """Get the current component being tested."""
-    return getattr(_test_context, "current_component", None)
-
-def set_current_annotation_type(annotation_type):
-    """Set the current annotation type being tested."""
-    _test_context.current_annotation_type = annotation_type
-
-def get_current_annotation_type():
-    """Get the current annotation type being tested."""
-    return getattr(_test_context, "current_annotation_type", None)
-
-# Component testing context manager
-class testing_component:
-    """Context manager for testing a specific component."""
-    
-    def __init__(self, component):
-        self.component = component
-        self.previous_component = None
-    
-    def __enter__(self):
-        self.previous_component = get_current_component()
-        set_current_component(self.component)
-        return self.component
-    
-    def __exit__(self, exc_type, exc_value, traceback):
-        set_current_component(self.previous_component)
-        return False
 
 # Test data structure
 class COPTestData(NamedTuple):
@@ -77,8 +45,128 @@ class COPTestData(NamedTuple):
         if self.source_info:
             result["source_info"] = self.source_info._asdict()
         return result
+        
+
+class tests_concept:
+    """
+    Context manager and decorator for testing a specific concept.
+    
+    Can be used in two ways:
+    
+    1. As a context manager:
+       with tests_concept(process_payment):
+           # Test code with access to process_payment
+    
+    2. As a decorator:
+       @tests_concept(process_payment)
+       def test_payment_flow():
+           # Test code with implicit access to process_payment
+           
+       @tests_concept(process_payment)
+       class TestPaymentProcessing:
+           def test_basic_flow(self):
+               # Test code with self.concept = process_payment
+    """
+    
+    def __init__(self, component):
+        """Initialize with the concept to test."""
+        self.component = component
+    
+    def __enter__(self):
+        """Enter the testing context."""
+        get_system().push_context("test_concept", self.component)
+        return self.component
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Exit the testing context."""
+        get_system().pop_context("test_concept")
+        return False
+    
+    def __call__(self, func_or_class):
+        """
+        Use as a decorator for a test function or class.
+        
+        Args:
+            func_or_class: The function or class to decorate
+            
+        Returns:
+            Decorated function or class
+        """
+        if inspect.isclass(func_or_class):
+            # Decorating a test class
+            return self._decorate_class(func_or_class)
+        else:
+            # Decorating a test function
+            return self._decorate_function(func_or_class)
+    
+    def _decorate_function(self, func):
+        """Decorate a test function to run with this concept."""
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            with self:
+                # For test functions, add concept as first parameter if needed
+                sig = inspect.signature(func)
+                if len(args) < len(sig.parameters) and not args:
+                    # Function expects concept as first parameter
+                    return func(self.concept, *args, **kwargs)
+                return func(*args, **kwargs)
+        
+        # Store component reference on function for direct access
+        wrapper.__cop_concept_component__ = self.component
+        
+        return wrapper
+    
+    def _decorate_class(self, cls):
+        """Decorate a test class to run with this component."""
+        # Store component on the class
+        cls.__cop_concept_component__ = self.component
+        
+        # Add setup method to make component available to test methods
+        original_setup = getattr(cls, "setUp", None)
+        
+        def setUp(self):
+            # Call original setup if it exists
+            if original_setup:
+                original_setup(self)
+            
+            # Set component context
+            get_system().push_context("test_component", cls.__cop_concept_component__)
+            
+            # Make component available to test methods
+            self.concept = cls.__cop_concept_component__
+        
+        # Add teardown to clean up context
+        original_teardown = getattr(cls, "tearDown", None)
+        
+        def tearDown(self):
+            # Clean up component context
+            get_system().pop_context("test_concept")
+            
+            # Call original teardown if it exists
+            if original_teardown:
+                original_teardown(self)
+        
+        # Set the methods
+        cls.setUp = setUp
+        cls.tearDown = tearDown
+        
+        return cls
 
 # Utility functions
+
+def get_current_concept():
+    """Get the component currently being tested."""
+    return get_system().get_current_context("test_concept")
+
+def set_current_annotation_type(annotation_type):
+    """Set the current annotation type being tested."""
+    get_system().push_context("test_annotation_type", annotation_type)
+
+def get_current_annotation_type():
+    """Get the current annotation type being tested."""
+    return get_system().get_current_context("test_annotation_type")
+    
+
 def get_test_id(test_func):
     """Generate a fully qualified test ID."""
     module_name = test_func.__module__
@@ -91,12 +179,3 @@ def get_test_id(test_func):
     
     return f"{module_name}.{func_name}"
 
-def get_current_context():
-    """Get the current annotation context."""
-    context = {}
-    for annotation_type in ["invariant", "risk", "implementation_status", "decision", "intent"]:
-        if hasattr(_test_context, f"{annotation_type}_stack"):
-            stack = getattr(_test_context, f"{annotation_type}_stack")
-            if stack:
-                context[annotation_type] = stack[-1]
-    return context
