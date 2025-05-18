@@ -586,9 +586,9 @@ class ConceptAnnotations:
     """Context manager for applying annotations to the current scope."""
     
     def __enter__(self):
-        # Determine the current scope
-        self._scope = self._determine_scope(inspect.currentframe().f_back)
-        get_system().push_context("annotation_handler", self)
+        system = get_system()
+        self._scope = system.determine_scope(inspect.currentframe().f_back)
+        system.push_context("annotation_handler", self)
         return self
     
     def handle_annotation(self, annotation):
@@ -599,10 +599,6 @@ class ConceptAnnotations:
         get_system().pop_context("annotation_handler")
         return False
     
-    def _determine_scope(self, frame):
-        """Determine the current scope (module, class, function)."""
-        return get_system().determine_scope(frame)
-
 # Create singleton instance
 concept_annotations = ConceptAnnotations()
 
