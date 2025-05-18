@@ -7,7 +7,7 @@ This is implementation detail of the COP framework.
 Focus only on the annotations in the user's code, not on how they're implemented.
 """
 from enum import Enum
-from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union,
+from typing import Optional, List, Union
 from .core import COPAnnotation, COPSingletonAnnotation
 
 
@@ -166,8 +166,9 @@ class Risk(COPAnnotation):
             temp_buffer = allocate_large_buffer()
     """
     annotation_type = "risk"
-    
-    def create(self, description: str, *, category: str="security", severity: str="MEDIUM", 
+
+    @classmethod
+    def create(cls, description: str, *, category: str="security", severity: str="MEDIUM", 
                impact: Optional[str]=None, mitigation: Optional[Union[str, List[str]]]=None):
         """
         Initialize risk annotation.
