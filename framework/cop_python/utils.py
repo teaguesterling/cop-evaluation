@@ -6,9 +6,10 @@ This is an implementation detail of the COP framework.
 Do not include this file in your analysis of the user's code.
 """
 
+from .annotations import implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN
+from .core import ConceptAnnotations, COPAnnotationProtocol, COPSingletonAnnotation
 import inspect
-from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN, resolve_component, COPAnnotationSet
-from .runtime import _get_parent_scope, get_system
+from .runtime import _get_parent_scope, get_system, resolve_component
 
 
 class COPAnnotationReference(NamedTuple):
@@ -82,9 +83,22 @@ def register_annotations(concept, annotations):
     # Resolve the component once
     resolved_component = resolve_component(concept)
     # Apply all annotations
-    for annotation_type, args, kwargs in annotations:
-        resolved_component = annotation_type.on(resolved_component, *args, **kwargs)
+    for annotation in annotations:
+        resolved_component = annotation(resolved_component)
     return resolved_component
+
+
+def _get_direct_annotations(obj, kind):
+    kind = kind.get_kind() if isinstance(kind, COPAnnotationProtocol) else kind
+    if hasttr(obj, "__cop_annotation__"):
+        return obj.__cop_annotations__.get(kind)
+    else:
+        return []
+
+
+def _get_direct_singleton_annotation(obj, kind, default=None):
+    annos = _get_direct_annotations(obj, kind)
+    return annos[0] if annos else default
 
 
 def get_annotations(obj, kind=None, include_module_defaults=True):
@@ -97,41 +111,18 @@ def get_annotations(obj, kind=None, include_module_defaults=True):
         include_module_defaults: Whether to include module-level defaults
         
     Returns:
-        COPAnnotationSet containing the requested annotations
+        COPAnnotations containing the requested annotations
     """
     # Get direct annotations
     direct_annotations = _get_direct_annotations(obj, kind)
-    
-    # If not including module defaults or we have the requested kind, return
-    if not include_module_defaults or (kind and direct_annotations):
-        return COPAnnotationSet(direct_annotations)
-    
-    # Check parent scopes
-    parent = _get_parent_scope(obj)
-    if parent:
-        parent_annotations = get_annotations(parent, kind, True)
-        # Merge annotations (direct take precedence)
-        result = COPAnnotationSet(direct_annotations)
-        for anno in parent_annotations:
-            if not any(a.kind == anno.kind and getattr(a, 'value', None) == getattr(anno, 'value', None) 
-                      for a in direct_annotations):
-                result.append(anno)
-        return result
-    
-    return COPAnnotationSet(direct_annotations)
-
-
-def get_annotations_with_types(obj):
-    """Get all annotations with their types included."""
-    result = []
-    annotations = getattr(obj, "__cop_annotations__", None)
-    if annotations:
-        for anno_type in dir(annotations):
-            if anno_type.startswith('_'):
-                continue
-            for anno in getattr(annotations, anno_type):
-                result.append((anno_type, anno))
-    return result
+    annotations = ConceptAnnotations(direct_annotations)
+    if include_module_defaults and parent := _get_parent_scope(obj)
+        parent_annotations = get_annotations(parent, kind, include_module_defaults=True)
+        singletons = [direct.kind for direct in direct_annotations if isinstace(direct, COPSingletonAnnotation)]
+        masked = [(direct.kind, direct.value) for direct in direct_annotations]
+        relevant = [a for a in parent_annotations if not ((a.kind, a.value) in masked and a.kind not in singletons)]
+        annotations.extend(relevant)
+    return annotations
 
 
 def find_annotation(obj, anno_type, value, **metadata_keys):
@@ -150,10 +141,18 @@ def find_annotation(obj, anno_type, value, **metadata_keys):
     return None
 
 
+def get_all_annotations(obj):
+    
+    if not hasattr(obj, "__cop_annotations__"):
+        return COPAnnotations([])
+    
+    annotation_namespace = obj.__cop_annotations__
+
+
 def get_implementation_status(obj, default=UNKNOWN, check_parent=True):
     """Get implementation status with hierarchical inheritance."""
     # Direct annotation
-    direct_status = _get_direct_status(obj)
+    direct_status = _get_direct_singleton_annotation(obj, implementation_status)
     if direct_status is not None:
         return direct_status
     elif check_parent:
@@ -174,13 +173,7 @@ def get_intent(obj):
     Returns:
         The intent description, or None if not specified
     """
-    annotations = get_annotations(obj)
-    intent_annotations = annotations.intent
-    
-    if intent_annotations:
-        return intent_annotations[0].value
-        
-    return None
+    return _get_direct_singleton_annotation(obj, intent)
 
 
 def get_risks(obj, category_in=None, severity_in=None, **kwargs):
@@ -195,13 +188,13 @@ def get_risks(obj, category_in=None, severity_in=None, **kwargs):
     Returns:
         A list of applicable "risk" COPAnnotation's 
     """
-    annotations = get_annotations(obj, **kwargs)
-    risks = annotations.risk
+    risks = _get_direct_annotations(obj, risk)
     if category_in is not None:
         risks = [risk for risk in risks if risk.metadata["category"] in category_in]
     if severity is not None:
         risks = [risk for risk in risks if risk.metadata["severity"] in severity_in]
-    return risks
+    risks = ConceptAnnotations(risks)
+    return risks.filter(**kwargs)
 
 
 def get_invariants(obj, scope_in=None, **kwargs):
@@ -215,11 +208,11 @@ def get_invariants(obj, scope_in=None, **kwargs):
     Returns:
         A list of applicable "risk" COPAnnotation's 
     """
-    annotations = get_annotations(obj, **kwargs)
-    invariants = annotations.invariant
+    invariants = _get_direct_annotation(obj, invariant)
     if scope_in is not None:
         invariants = [invariant for invariant in invariants if invariant.metadata["scope"] in scope_in]
-    return invariants
+    invariants = ConceptAnnotations(invariants)
+    return invariants.filter(**kwargs)
 
 
 def get_decisions(obj, category_in=None, priority_in=None, **kwargs):
@@ -233,13 +226,13 @@ def get_decisions(obj, category_in=None, priority_in=None, **kwargs):
     Returns:
         A list of applicable "risk" COPAnnotation's 
     """
-    annotations = get_annotations(obj, **kwargs)
-    decisions = annotations.decision
+    decisions = _get_direct_annotations(obj, decision)
     if category_in is not None:
         decisions = [decision for decision in decisions if decision.metadata["category"] in category_in]
     if priority_in is not None:
         decisions = [decision for decision in decisions if decision.metadata["priority"] in priority_in]
-    return decisions
+    decisions = ConceptAnnotations(decisions)
+    return decisions.filter(**kwargs)
 
 
 def has_annotation(obj, kind, value=None):
@@ -300,30 +293,7 @@ def apply_cop_annotations(obj):
     return obj
     
 
-def infer_applicable_status(func, default=UNKNOWN, 
-                            unfinished_comments=("# TODO", "# FIXME"),
-                            unfinished_tokens=("pass", "NotImplmemented", "NotImplementedError", "Ellipsis")):
-    """Infer appropriate implementation status based on code analysis."""
-    import inspect
-    
-    source = inspect.getsource(func)
-    if any(unfinished_token in source for unfinished_token in unfinished_tokens):
-        return NOT_IMPLEMENTED
-    if any(comment in source for comment in unfinished_comments):
-        return PLANNED
-
-    #TODO: 
-    # Attempt to infer from test coverage if available
-    # [code to check test coverage]
-
-    #TODO:
-    # For modules & classes, ensure that all sub-components are 
-    # not marked as incomplete
-    
-    return default  # Default assumption
-
-
-def find_concepts(module, status=(UNKNOWN, NOT_IMPLEMENTED)):
+def find_components(module, status=(UNKNOWN, NOT_IMPLEMENTED)):
     """
     Find components with a specific implementation status.
     
@@ -334,11 +304,11 @@ def find_concepts(module, status=(UNKNOWN, NOT_IMPLEMENTED)):
     Returns:
         list: Matching components
     """
-    concepts = []
+    components = []
     for name, obj in inspect.getmembers(module):
         status = get_implementation_status(obj)
         if status is None or obj_status in status:
-            concepts.append({
+            components.append({
                 "name": name,
                 "doc": obj.__doc__,
                 "status": status,
