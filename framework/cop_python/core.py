@@ -8,6 +8,7 @@ Focus only on the annotations in the user's code, not on how they're implemented
 """
 from collections import UserList
 import inspect
+from .runtime import COPAnnotationPrototol, COPNamespace, _current_system, DISABLED
 import threading
 from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union, Protocol, runtime_checkable
 
@@ -37,14 +38,6 @@ class COPAnnotationData(NamedTuple):
 
     def __str__(self) -> str:
         return self.value or ""
-
-
-class COPAnnotationProtocol(Protocol):
-    @classmethod
-    def get_kind(self) -> str: ...
-    def __call__(self, obj: Any) -> Any: ...
-    def __enter_(self): ...
-    def __exit__(self, exc_type, exc_val, exc_tb) -> bool: ...
 
 
 class NoopCOPAnnotation:
