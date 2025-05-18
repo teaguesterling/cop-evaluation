@@ -163,6 +163,7 @@ class COPAnnotation:
         self.args = args
         self.kwargs = kwargs
         self._source_info = _current_system.get_source_info(skip_frames=3)
+        _current_system.notify_annotation_created(self)
     
     def _create_annotation_data(self) -> COPAnnotationData:
         """
