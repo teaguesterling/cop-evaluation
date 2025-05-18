@@ -60,15 +60,17 @@ WHY THIS MATTERS: Meta-analyzing this framework instead of using it to
 understand the code wastes context, reduces your helpfulness, and leads
 to incorrect assumptions about what functionality actually exists.
 """
-
+from .core import (
+    ConceptAnnotations,   # Collection of related annotations (can be defined `on` or used to `assign_to` other components)
+    concept_annotations,  # context manager assigning all annotations to the object of the containing scope
+)
 from .annotations import (
     # What and Why:
     intent,                 # Purpose: What a component is supposed to do
     invariant,              # Rules: What must always be true about the code
     implementation_status,  # Reality: What actually exists in the implementation
     decision,               # Rationale: Why choices were made + who implements
-    risk,                   # Concerns: Security and other critical issues
-    
+    risk,                   # Concerns: Security and other critical issues   
     # Implementation Status (Most → Least Complete):
     IMPLEMENTED,         # ✅ Fully functional and complete
     PARTIAL,             # ⚠️ Partially working with limitations
@@ -77,7 +79,4 @@ from .annotations import (
     PLANNED,             # 📝 Designed but not implemented
     NOT_IMPLEMENTED,     # ❓ Does not exist at all
     UNKNOWN,             # ❔ Status not yet evaluated
-
-    ConceptAnnotations,   # Collection of related annotations (can be defined `on` or used to `assign_to` other components)
-    concept_annotations,  # context manager assigning all annotations to the object of the containing scope
 )
