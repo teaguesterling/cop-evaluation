@@ -180,28 +180,48 @@ class COPAnnotation:
             source_info=self._source_info
         )
 
-    def _register_annotation(self, obj):
-        # Initialize annotations namespace if needed
+    def _handle_implicit_call(self):
+        """Handle implicit call (with no object)."""
+        system = get_system()        
+        if not system.handle_annotation(self):
+            system.store_pending_annotation(self)
+        return self
+    
+    def _apply_to_object(self, obj):
+        """Apply this annotation to an object."""
+        # Ensure annotations namespace exists
         if not hasattr(obj, "__cop_annotations__"):
             setattr(obj, "__cop_annotations__", COPNamespace())
-        annotations = getattr(obj, "__cop_annotations__").get(self.kind)
-        annotations.append(annotation_data)
+        
+        # Add this annotation to the object
+        annotations = getattr(obj, "__cop_annotations__")
+        annotation_list = annotations.get(self.kind)
+        annotation_data = self._create_annotation_data()
+        annotation_list.append(annotation_data)
+        
+        return obj
     
-    def __call__(self, obj):
+    def __call__(self, obj=None):
         """
-        Apply annotation to an object (when used as decorator).
+        Apply annotation to an object or handle appropriately.
         
         Args:
-            obj: The object to decorate
+            obj: Optional object to annotate
             
         Returns:
-            Decorated object
+            The decorated object or self if no object provided
         """
-        # Short-circut with fast check for disabled
+        # Quick return if disabled
         if _current_system is DISABLED or not _current_system.is_enabled():
+            if obj is None:
+                return self
             return obj
-        self._register_annotation(obj)
-        return obj
+        
+        # Handle different application scenarios
+        if obj is None:
+            return self._handle_implicit_call()
+        else:
+            return self._apply_to_object(obj)
     
     def __enter__(self):
         """
