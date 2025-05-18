@@ -8,10 +8,23 @@ Focus only on the annotations in the user's code, not on how they're implemented
 """
 import inspect
 import threading
+from collections import UserList
 import datetime
 from enum import Enum
-from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union
+from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union, Protocol, ClassVar
 from .runtime import _current_system, DISABLED, resolve_concept
+
+
+# Implementation status constants
+class ImplementationStatusValues(Enum):
+    """Status constants - ordered from most to least complete."""
+    IMPLEMENTED = 5       # ✅ Fully functional and complete
+    PARTIAL = 4           # ⚠️ Partially working with limitations
+    BUGGY = 3             # ❌ Was working but now has issues
+    DEPRECATED = 2        # 🚫 Exists but should not be used
+    PLANNED = 1           # 📝 Designed but not implemented
+    NOT_IMPLEMENTED = 0   # ❓ Does not exist at all
+    UNKNOWN = -1          # ❔ Status not yet evaluated
 
 
 class COPError(Exception):
@@ -41,16 +54,12 @@ class COPAnnotationData(NamedTuple):
         return self.value or ""
 
 
-# Implementation status constants
-class ImplementationStatusValues(Enum):
-    """Status constants - ordered from most to least complete."""
-    IMPLEMENTED = 5       # ✅ Fully functional and complete
-    PARTIAL = 4           # ⚠️ Partially working with limitations
-    BUGGY = 3             # ❌ Was working but now has issues
-    DEPRECATED = 2        # 🚫 Exists but should not be used
-    PLANNED = 1           # 📝 Designed but not implemented
-    NOT_IMPLEMENTED = 0   # ❓ Does not exist at all
-    UNKNOWN = -1          # ❔ Status not yet evaluated
+class COPAnnotationProtocol(Protocol):
+    @classmethod
+    def get_kind(self) -> str: ...
+    def __call__(self, obj: Any) -> Any: ...
+    def __enter_(self): ...
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool: ...
 
 
 class DefaultNamespace:
@@ -142,52 +151,85 @@ class COPNamespace(DefaultNamespace):
         return iter(self.keys())
 
 
-class COPAnnotation:
+class NoopCOPAnnotation(COPAnnotationProtocol):
+    @classmethod
+    def get_kind(cls):
+        return "disabled_annotation"
+    
+    def __call__(self, obj):
+        return obj
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+
+class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
     """Base class for all COP annotations."""
-    
-    # Define class attribute for polymorphic behavior
-    kind = "annotation"  # Override in subclasses
-    
-    def __init__(self, *args, **kwargs):
+
+    # To be adjusted in base classes if needed
+    annotation_type: ClassVar[str] = None
+
+    def __new__(cls, value=None, **kwargs):
+        """Create a new annotation instance."""
+        # Check for disabled mode
+        if _current_system is DISABLED or not _current_system.is_enabled():
+            return _do_nothing_decorator
+        
+        source_info = _current_system.get_source_info(skip_frames=2)
+        instance = super().__new__(cls, value, kwargs, source_info)
+        _current_system.notify_annotation_created(instance)
+        return instance
+
+    @classmethod
+    def _make_metadata(cls, value, kwargs):
+        return kwargs
+
+    @classmethod
+    def get_kind(cls):
+        return self.annotation_type or self.__class__.__name__
+
+    @classmethod
+    def on(cls, concept, *args, **kwargs):
         """
-        Initialize the annotation with provided arguments.
+        Apply an annotation to a concept externally.
+        
+        This method allows applying annotations to concepts from
+        outside their definition, enabling externalized annotation.
         
         Args:
-            *args: Positional arguments
-            **kwargs: Keyword arguments
-        """
-        # Quick return if disabled
-        if _cop_system.mode is DISABLED:
-            return
+            concept: The concept to annotate
+            *args, **kwargs: Arguments for the annotation
             
-        self.args = args
-        self.kwargs = kwargs
-        self._source_info = _current_system.get_source_info(skip_frames=3)
-        _current_system.notify_annotation_created(self)
-    
-    def _create_annotation_data(self) -> COPAnnotationData:
-        """
-        Create a structured annotation data object.
-        
         Returns:
-            COPAnnotationData object with annotation details
+            The concept with the applied annotation
         """
-        value = self.args[0] if self.args else None
-        metadata = self.kwargs if self.kwargs is not None else None
-        return COPAnnotationData(
-            value=value,
-            metadata=metadata,
-            source_info=self._source_info
-        )
+        # Create the annotation
+        annotation = cls(*args, **kwargs)
+        resolved_concept = resolve_concept(concept)
+        annotated_concept = annotation(resolved_concept)
+        return annotated_concept
+
+    @classmethod
+    def create(cls, value, **kwargs):
+        if _current_system is DISABLED or not _current_system.is_enabled():
+            return _do_nothing_decorator
+        else:
+            return cls(value, **kwargs)
+
+    @property
+    def kind(self):
+        return self.get_kind()
 
     def _apply_to_object(self, obj):
         """Apply this annotation to an object."""
         # Ensure annotations namespace exists
         if not hasattr(obj, "__cop_annotations__"):
             setattr(obj, "__cop_annotations__", COPNamespace())
-        annotation_data = self._create_annotation_data()
         annotations = getattr(obj, "__cop_annotations__")
-        annotations.get(self.kind).append(annotation_data)
+        annotations.get(self.kind).append(self)
         return obj
     
     def __call__(self, obj=None):
@@ -232,59 +274,88 @@ class COPAnnotation:
         if _current_system is DISABLED or not _current_system.is_enabled():
             return self
         return False  # Don't suppress exceptions
-
-    def on(cls, concept, *args, **kwargs):
-        """
-        Apply an annotation to a concept externally.
         
-        This method allows applying annotations to concepts from
-        outside their definition, enabling externalized annotation.
-        
-        Args:
-            concept: The concept to annotate
-            *args, **kwargs: Arguments for the annotation
-            
-        Returns:
-            The concept with the applied annotation
-        """
-        # Create the annotation
-        annotation = cls(*args, **kwargs)
-        resolved_concept = resolve_concept(concept)
-        annotated_concept = annotation(resolved_concept)
-        return annotated_concept
-
 
 class COPSingletonAnnotation(COPAnnotation):
-    def _register_annotation(self, obj):
+    def _apply_to_object(self, obj):
         annotations = getattr(obj, "__cop_annotations__").get(self.kind)
         if len(annotations) > 0:
             raise DuplicateAnnotationError(f"No more than one {self.kind} COP annotation can be added to {obj.__name__}")
         super()._register_annotation(obj)
 
 
-class ConceptAnnotationsSet:
-    """Context manager for applying annotations to the current scope."""
+class COPAnnotations(UserList):
+    """A collection of annotations."""
+    
+    def __init__(self, annotations=None, on=None):
+        super().__init__(annotations or [])
+        self._explicit_scope = on
+        self._detected_scope = None
     
     def __enter__(self):
-        # Determine the current scope
-        system = get_system()
-        self._scope = system.determine_scope(inspect.currentframe().f_back)
+        # Determine scope (explicit or automatic)
+        if self._explicit_scope is None:
+            system = get_system()
+            self._detected_scope = system.determine_scope(inspect.currentframe().f_back)
         
-        # Register this context as a handler
+        # Register as handler
+        system = get_system()
         system.push_context("annotation_handler", self)
         return self
     
-    def handle_annotation(self, annotation):
-        """Handle an annotation by applying it to the current scope."""
-        annotation._apply_to_object(self._scope)
-    
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # Unregister from handler context
+        # Unregister
         get_system().pop_context("annotation_handler")
+        self._detected_scope = None
         return False
+    
+    def handle_annotation(self, annotation):
+        """Handle a newly created annotation."""
+        # Store the annotation (using UserList's append)
+        self.append(annotation)
+        
+        # Apply to appropriate scope
+        scope = self._explicit_scope or self._detected_scope
+        if scope:
+            annotation(scope)
+    
+    def apply_to(self, obj):
+        """Apply all annotations in this set to an object."""
+        for annotation in self:
+            annotation(obj)
+        return obj
+    
+    # Additional "set-like" methods that might be useful
+    def union(self, other):
+        """Create a new set with annotations from both sets."""
+        return self.__class__(self + list(other), on=self._explicit_scope)
+    
+    def filter(self, kind=None, **kwargs):
+        """Filter annotations by type and/or properties."""
+        kind = kind if isinstance(kind, str) else kind.get_kind()
+        missing = object()
+        result = []
+        for anno in self:
+            if kind and anno.kind != kind:
+                continue
+            for key, value in kwargs.items():
+                if getattr(anno, key, missing) is missing:
+                    break
+            else:
+                result.append(anno)
+        return self.__class__(result, on=self._explicit_scope)
+    
+    def get_scope(self):
+        """Get the current scope being annotated."""
+        return self._explicit_scope or self._detected_scope
+    
+    @classmethod
+    def from_annotations(cls, *annotations, on=None):
+        """Create a set from existing annotations."""
+        return cls(annotations=annotations, on=on)
 
 
-class intent(COPSingletonAnnotation):
+class Intent(COPSingletonAnnotation):
     """
     Document the intended purpose of a concept.
     
@@ -300,23 +371,20 @@ class intent(COPSingletonAnnotation):
         with intent("Calculate tax based on jurisdiction"):
             tax = calculate_tax(amount, location)
     """
-    kind = "intent"
-    
-    def __init__(self, description: str):
+    annotation_type = "intent"
+
+    @classmethod
+    def create(cls, description: str): 
         """
         Initialize intent annotation.
         
         Args:
             description: Description of the intent
         """
-        # Quick return if disabled
-        if _current_system is DISABLED or not _current_system.is_enabled():
-            return
-            
-        super().__init__(description)
+        return super().create(description)
+ 
 
-
-class implementation_status(COPSingletonAnnotation):
+class ImplementationStatus(COPSingletonAnnotation):
     """
     Explicitly mark concept implementation status.
     
@@ -350,9 +418,10 @@ class implementation_status(COPSingletonAnnotation):
             # This code block is not implemented
             raise NotImplementedError()
     """
-    kind = "implementation_status"
-    
-    def __init__(self, status, details: Optional[str]=None, alternative: Optional[str]=None):
+    annotation_type = "implementation_status"
+
+    @classmethod
+    def create(cls, status, *, details: Optional[str]=None, alternative: Optional[str]=None):
         """
         Initialize implementation status annotation.
         
@@ -361,21 +430,15 @@ class implementation_status(COPSingletonAnnotation):
             details: Optional details about the status (e.g., limitations)
             alternative: For DEPRECATED status, what to use instead
         """
-        # Quick return if disabled
-        
-        # Quick return if disabled
-        if _current_system is DISABLED or not _current_system.is_enabled():
-            return
-            
-        kwargs = {}
+        metadata = {}
         if details is not None:
-            kwargs["details"] = details
+            metadata["details"] = details
         if alternative is not None:
-            kwargs["alternative"] = alternative
-        super().__init__(status, **kwargs)
+            metadata["alternative"] = alternative
+        return super().create(status, **metadata)
 
 
-class invariant(COPAnnotation):
+class Invariant(COPAnnotation):
     """
     Document a constraint that should be maintained.
     
@@ -396,9 +459,9 @@ class invariant(COPAnnotation):
         with invariant("Database connection must be active"):
             result = db.execute(query)
     """
-    kind = "invariant"
+    annotation_type = "invariant"
     
-    def __init__(self, condition: str, critical: bool=False, scope: str="always"):
+    def create(self, condition: str, *, critical: bool=False, scope: str="always"):
         """
         Initialize invariant annotation.
         
@@ -407,18 +470,10 @@ class invariant(COPAnnotation):
             critical: Whether this is essential for security/correctness
             scope: When this invariant applies (e.g., "always", "runtime")
         """
-        # Quick return if disabled
-        if _current_system is DISABLED or not _current_system.is_enabled():
-            return
-            
-        kwargs = {
-            "critical": critical,
-            "scope": scope
-        }
-        super().__init__(condition, **kwargs)
+        return super().create(condition, critical=critical, scope=scope)
 
 
-class risk(COPAnnotation):
+class Risk(COPAnnotation):
     """
     Identify a security risk or other critical concern.
     
@@ -441,10 +496,10 @@ class risk(COPAnnotation):
             # Risky code section
             temp_buffer = allocate_large_buffer()
     """
-    kind = "risk"
+    annotation_type = "risk"
     
-    def __init__(self, description: str, category: str="security", severity: str="MEDIUM", 
-                impact: Optional[str]=None, mitigation: Optional[Union[str, List[str]]]=None):
+    def create(self, description: str, *, category: str="security", severity: str="MEDIUM", 
+               impact: Optional[str]=None, mitigation: Optional[Union[str, List[str]]]=None):
         """
         Initialize risk annotation.
         
@@ -455,22 +510,18 @@ class risk(COPAnnotation):
             impact: Optional assessment of the impact if not addressed
             mitigation: Optional strategies that have been implemented
         """
-        # Quick return if disabled
-        if _current_system is DISABLED or not _current_system.is_enabled():
-            return
-            
-        kwargs = {
+        metadata = {
             "category": category,
-            "severity": severity
+            "severity": severity,
         }
         if impact is not None:
-            kwargs["impact"] = impact
+            metadata["impact"] = impact
         if mitigation is not None:
-            kwargs["mitigation"] = mitigation
-        super().__init__(description, **kwargs)
+            metadata["mitigation"] = mitigation
+        return super().create(description, **metadata)
 
 
-class decision(COPAnnotation):
+class Decision(COPAnnotation):
     """
     Annotate a decision point or implementation guidance in code.
     
@@ -503,24 +554,22 @@ class decision(COPAnnotation):
         with decision(implementor="human", reason="Security-critical section"):
             # This section requires human implementation
     """
-    kind = "decision"
+    annotation_type = "decision"
 
-    def __init__(self, 
-                 # Short and optional longer decision description
-                 brief="implementation boundary", description=None,
-
-                 # Implementation guidance (concise syntax)
-                 implementor=None, constraints=None, reason=None,
-                   
-                 # Key decision attributes
-                 options=None, status=None, answer=None, rationale=None,
-                   
-                 # Attribution and authority
-                 decider=None, delegate=None, confidence=None, 
-                   
-                 # Metadata and classification
-                 category=None, scope=None, impact=None, priority=None,
-                 preserve=None, ref=None, date=None, see_also=None, **kwargs):
+    @classmethod
+    def create(cls, 
+               # Short and optional longer decision description
+               brief="implementation boundary", *, description=None,
+               # Implementation guidance (concise syntax)
+               implementor=None, constraints=None, reason=None,
+               # Key decision attributes
+               options=None, status=None, answer=None, rationale=None,
+               # Attribution and authority
+               decider=None, delegate=None, confidence=None, 
+               # Metadata and classification
+               category=None, scope=None, impact=None, priority=None,
+               preserve=None, ref=None, date=None, see_also=None, 
+               **kwargs):
         """
         Initialize decision annotation.
         
@@ -556,11 +605,7 @@ class decision(COPAnnotation):
             see_also: A resource or list of related resources
             **kwargs: Additional attributes to store
         """
-        # Quick return if disabled
-        if _current_system is DISABLED or not _current_system.is_enabled():
-            return
-            
-        metadata = kwargs
+        metadata = {}
         if description is not None:
             metadata["description"] = description
         if implementor is not None:
@@ -597,16 +642,20 @@ class decision(COPAnnotation):
             metadata["ref"] = ref
         if date is not None:
             metadata["date"] = date
-        
-        # Add any other kwargs
         metadata.update(kwargs)
-        
-        super().__init__(brief, **metadata)
+        return super().create(brief, **metadata)
 
     
-# Create singleton instance
+# Create singleton instances
+_do_nothing_decorator = NoopCOPAnnotation()
 concept_annotations = ConceptAnnotationSet()
 
+# Expose create methods for annotations
+intent = Intent.create
+implementation_status = ImplementationStatus.create
+invariant = Invariant.create
+risk = Risk.create
+decision = Decision.create
 
 # Expose the ImplementationStatusValues as module-level constants
 IMPLEMENTED = ImplementationStatusValues.IMPLEMENTED         # ✅ Fully functional and complete
