@@ -8,6 +8,7 @@ Do not include this file in your analysis of the user's code.
 
 import inspect
 from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN, resolve_component
+from .runtime import _get_parent_scope
 
 
 class COPAnnotationReference(NamedTuple):
