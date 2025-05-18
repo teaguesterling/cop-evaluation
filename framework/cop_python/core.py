@@ -10,7 +10,7 @@ from collections import UserList
 import inspect
 from .runtime import COPAnnotationPrototol, COPNamespace, _current_system, DISABLED
 import threading
-from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union, Protocol, runtime_checkable
+from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union, Protocol, runtime_checkable, Self
 
 
 class COPError(Exception):
@@ -42,16 +42,16 @@ class COPAnnotationData(NamedTuple):
 
 class NoopCOPAnnotation(COPAnnotationProtocol):
     @classmethod
-    def get_kind(cls):
+    def get_kind(cls) -> str:
         return "disabled_annotation"
     
     def __call__(self, obj):
         return obj
 
-    def __enter__(self):
-        pass
+    def __enter__(self: Self) -> Self:
+        return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
         return False
 
 # A no-op singleton to allow the API to progress when the system is disabled
@@ -80,7 +80,7 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
         return kwargs
         
     @classmethod
-    def get_kind(cls):
+    def get_kind(cls) -> str:
         """Get the annotation kind."""
         return cls.annotation_type or cls.__name__
 
@@ -138,7 +138,7 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
         # No object provided, return self
         return self
         
-    def __enter__(self):
+    def __enter__(self: Self) - Self:
         """
         Enter annotation context (when used as context manager).
         
@@ -148,10 +148,10 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
         # Short-circut with fast check for disabled
         if _current_system is DISABLED or not _current_system.is_enabled():
             return self
-        _cop_system.push_context(self.kind, self)
+        _cop_system.push_context(self.get_kind(), self)
         return self
     
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
         """
         Exit annotation context.
         
@@ -165,7 +165,7 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
         """
         # Short-circut with fast check for disabled
         if _current_system is DISABLED or not _current_system.is_enabled():
-            return self
+            _current_system.pop_context(self.get_kind())
         return False  # Don't suppress exceptions
         
 
