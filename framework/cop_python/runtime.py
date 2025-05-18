@@ -283,8 +283,6 @@ class TracingCOPSystem(StandardCOPSystem):
 
 
 DISABLED = NoOpCOPSystem()
-ENABLED = StandardCOPSystem()
-
 _current_system = DISABLED
 
 
@@ -301,12 +299,12 @@ def set_system(system: COPSystem) -> None:
 
 def enable_cop() -> None:
     """Enable COP annotations."""
-    set_system(STANDARD)
+    set_system(StandardCOPSystem())
 
 
 def enable_cop_tracing() -> None:
     """Enable COP annotations with tracing."""
-    set_system(TRACING)
+    set_system(TracingCOPSystem())
 
 
 def disable_cop() -> None:
@@ -314,42 +312,63 @@ def disable_cop() -> None:
     set_system(DISABLED)
 
 
-def resolve_concept(concept: Union[Any, str], 
-                    base_module: Optional[str] = None) -> Any:
+def _get_parent_scope(obj):
+    """Get the parent scope of an object."""
+    if inspect.isfunction(obj) or inspect.ismethod(obj):
+        # For functions/methods, parent is class or module
+        module = inspect.getmodule(obj)
+        
+        if '.' in getattr(obj, "__qualname__", ""):
+            # Get class name from qualname
+            cls_name = obj.__qualname__.split('.')[0]
+            
+            # Try to get the class from the module
+            if module:
+                return getattr(module, cls_name, module)
+        
+        return module
+    elif inspect.isclass(obj):
+        # For classes, parent is module
+        return inspect.getmodule(obj)
+    return None
+
+
+def resolve_component(concept: Union[Any, str], 
+                      base_module: Optional[str] = None) -> Any:
     """
     Resolve a concept from an object or dotted path string.
     
     Args:
-        concept: The concept to resolve. Can be an actual object or a 
-                  dotted path string (e.g., "module.submodule.component")
+        component: The concept to resolve. Can be an actual object or a 
+                   dotted path string (e.g., "module.submodule.component")
         base_module: Optional base module to use for relative imports
         
     Returns:
-        The resolved concept object
+        The resolved component object
         
     Raises:
         ValueError: If the concept cannot be resolved
         
     Examples:
         # Resolve from object (returns the same object)
-        resolve_concept(process_payment)
+        resolve_component(process_payment)
         
         # Resolve from absolute path
-        resolve_concept("payment_system.process_payment")
+        resolve_component("payment_system.process_payment")
         
         # Resolve from relative path with base module
-        resolve_concept("process_payment", base_module="payment_system")
+        resolve_component("process_payment", base_module="payment_system")
     """
     # If concept is already an object (not a string), return it directly
-    if not isinstance(concept, str):
-        return concept
+    if not isinstance(component, str):
+        return component
     
     try:
         # Handle relative imports with base_module
-        if base_module and '.' not in concept:
-            full_path = f"{base_module}.{concept}"
+        if base_module and '.' not in component:
+            full_path = f"{base_module}.{component}"
         else:
-            full_path = concept
+            full_path = component
         
         # Split into module path and attribute name
         if '.' in full_path:
@@ -366,4 +385,4 @@ def resolve_concept(concept: Union[Any, str],
             return importlib.import_module(full_path)
             
     except (ImportError, AttributeError, ValueError) as e:
-        raise ValueError(f"Could not resolve concept path '{concept}': {e}")
+        raise ValueError(f"Could not resolve concept path '{component}': {e}")
