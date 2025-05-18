@@ -4,7 +4,7 @@ import importlib
 import inspect
 import sys
 import threading
-from typing import Any, Dict, List, Optional, Union, NamedTuple,Protocol, runtime_checkable
+from typing import Any, Dict, List, Optional, Union, NamedTuple, Tuple, Protocol, runtime_checkable
 import types
 
 
@@ -35,11 +35,19 @@ class TraceEntry(NamedTuple):
         return result
 
 
+class COPAnnotationProtocol(Protocol):
+    @classmethod
+    def get_kind(self) -> str: ...
+    def __call__(self, obj: Any) -> Any: ...
+    def __enter_(self): ...
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool: ...
+
+
 @runtime_checkable
 class AnnotationHandler(Protocol):
     """Protocol defining the interface for handling annotations."""
     
-    def handle_annotation(self, annotation: 'COPAnnotation') -> None:
+    def handle_annotation(self, annotation: COPAnnotationProtocol) -> None:
         """Handle a newly created annotation."""
         ...
 
@@ -154,6 +162,12 @@ class COPNamespace:
     def __iter__(self):
         """Iterate through annotation type names."""
         return iter(self.keys())
+    
+    def __repr__(self):
+        """String representation of the namespace."""
+        items = [(name, getattr(self, name)) for name in self.keys()]
+        items_str = ", ".join(f"{name}={value}" for name, value in items)
+        return f"COPNamespace({items_str})"
 
 
 class NoOpCOPSystem(COPSystem):
@@ -197,6 +211,14 @@ class StandardCOPSystem(COPSystem):
         if not hasattr(self.thread_contexts, "contexts"):
             self.thread_contexts.contexts = COPNamespace()
 
+    def is_enabled(self) -> bool:
+        """Indicate we have an active COP tracking system"""
+        return True
+
+    def is_tracing(self) -> bool:
+        """Check if the system is tracing source positions."""
+        return False  # Standard system doesn't do tracing
+
     @property
     def contexts(self):
         """Access the context namespace, initializing if needed."""
@@ -233,16 +255,22 @@ class StandardCOPSystem(COPSystem):
         
         # Add to the most recent pending list
         pending[-1].append(annotation)
-
+        
     def push_context(self, context_type: str, context: Any) -> None:
         """Push a context to its stack."""
+        if not hasattr(self.thread_contexts, "contexts"):
+            self.thread_contexts.contexts = COPNamespace()
         self.contexts.get(context_type).append(context)
     
     def pop_context(self, context_type: str) -> Any:
         """Pop a context from its stack."""
+        if not hasattr(self.thread_contexts, "contexts"):
+            self.thread_contexts.contexts = COPNamespace()
+        
         stack = self.contexts.get(context_type)
         if stack:
             return stack.pop()
+        return None
     
     def get_contexts(self, context_type: str) -> List:
         """Get all contexts of a specific type."""
@@ -378,8 +406,8 @@ class TracingCOPSystem(StandardCOPSystem):
             self._add_trace("exit_context", context_type, context, source_info)
         return ret
     
-        def _add_trace(self, action: str, annotation_type: str, 
-                  annotation: Any, source_info: SourceInfo) -> None:
+    def _add_trace(self, action: str, annotation_type: str, 
+                   annotation: Any, source_info: SourceInfo) -> None:
         """
         Add a trace entry.
         
@@ -418,6 +446,9 @@ class TracingCOPSystem(StandardCOPSystem):
         if as_dict:
             return [trace.to_dict() for trace in self.traces]
         return self.traces
+
+DISABLED = NoOpCOPSystem()
+_current_system = DISABLED
 
 
 def get_system() -> COPSystem:
@@ -468,59 +499,40 @@ def _get_parent_scope(obj):
 
 
 def resolve_component(concept: Union[Any, str], 
-                      base_module: Optional[str] = None) -> Any:
+                     base_module: Optional[str] = None) -> Any:
     """
     Resolve a concept from an object or dotted path string.
-    
-    Args:
-        component: The concept to resolve. Can be an actual object or a 
-                   dotted path string (e.g., "module.submodule.component")
-        base_module: Optional base module to use for relative imports
-        
-    Returns:
-        The resolved component object
-        
-    Raises:
-        ValueError: If the concept cannot be resolved
-        
-    Examples:
-        # Resolve from object (returns the same object)
-        resolve_component(process_payment)
-        
-        # Resolve from absolute path
-        resolve_component("payment_system.process_payment")
-        
-        # Resolve from relative path with base module
-        resolve_component("process_payment", base_module="payment_system")
     """
     # If concept is already an object (not a string), return it directly
-    if not isinstance(component, str):
-        return component
+    if not isinstance(concept, str):
+        return concept
     
     try:
         # Handle relative imports with base_module
-        if base_module and '.' not in component:
-            full_path = f"{base_module}.{component}"
+        if base_module and '.' not in concept:
+            full_path = f"{base_module}.{concept}"
         else:
-            full_path = component
+            full_path = concept
         
         # Split into module path and attribute name
         if '.' in full_path:
             module_path, attr_name = full_path.rsplit('.', 1)
             
-            # Import the module
-            module = importlib.import_module(module_path)
-            
-            # Get the attribute from the module
-            resolved = getattr(module, attr_name)
-            return resolved
+            try:
+                # Import the module
+                module = importlib.import_module(module_path)
+                
+                # Get the attribute from the module
+                resolved = getattr(module, attr_name)
+                return resolved
+            except (ImportError, AttributeError) as e:
+                raise ValueError(f"Could not resolve concept path '{full_path}': {e}")
         else:
             # It's just a module name
-            return importlib.import_module(full_path)
+            try:
+                return importlib.import_module(full_path)
+            except ImportError as e:
+                raise ValueError(f"Could not import module '{full_path}': {e}")
             
-    except (ImportError, AttributeError, ValueError) as e:
-        raise ValueError(f"Could not resolve concept path '{component}': {e}")
-
-
-DISABLED = NoOpCOPSystem()
-_current_system = DISABLED
+    except Exception as e:
+        raise ValueError(f"Error resolving concept path '{concept}': {e}")
