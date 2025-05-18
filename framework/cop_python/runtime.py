@@ -1,7 +1,9 @@
+import datetime
 import importlib
 import inspect
+import sys
 import threading
-import datetime
+import types
 from typing import Any, Dict, List, Optional, Union, NamedTuple,Protocol, runtime_checkable
 
 
@@ -36,9 +38,33 @@ class TraceEntry(NamedTuple):
 class AnnotationHandler(Protocol):
     """Protocol defining the interface for handling annotations."""
     
-    def handle_annotation(self, annotation) -> None:
+    def handle_annotation(self, annotation: 'COPAnnotation') -> None:
         """Handle a newly created annotation."""
         ...
+
+
+class DecoratorBuffer:
+    """
+    Helper for handling class definitions in progress.
+    
+    When decorators are applied during class creation, the class
+    doesn't exist yet. This wrapper allows us to capture decorators
+    and apply them once the class is fully defined.
+    """
+    
+    def __init__(self, locals_dict):
+        self._locals = locals_dict
+        self._decorators = []
+    
+    def __call__(self, decorator):
+        """Capture annotation to apply later."""
+        self._pending.append(decorator)
+        return decorator
+    
+    def finish(self, cls):
+        """Apply all pending decorators to the finalized class."""
+        for decorator in self._pending:
+            decorator(cls)
         
 
 class COPSystem:
@@ -52,8 +78,12 @@ class COPSystem:
         """Check if the system is tracing source positions."""
         raise NotImplementedError()
 
+    def store_pending_annotation(self, annotation: 'COPAnnotation'):
+        """Store an annotation in the annotation stack to be applied later"""
+        reise NotImplementedError()
+
     def notify_annotation_created(self, annotation: 'COPAnnotation'):
-        """Notify all contexts that implement AnnotationHandler of a new COPAnnotation""":
+        """Notify all contexts that implement AnnotationHandler of a new COPAnnotation"""
         raise NotImplementedError()
     
     def get_source_info(self, skip_frames: int = 1) -> Optional[SourceInfo]:
@@ -89,6 +119,11 @@ class NoOpCOPSystem(COPSystem):
         return None
 
     def notify_annotation_created(self, annotation: 'COPAnnotation'):
+        """No-op implementation."""
+        pass
+
+    def store_pending_annotation(self, annotation: 'COPAnnotation'):
+        """No-op implementation."""
         pass
     
     def push_context(self, context_type: str, context: Any) -> None:
@@ -126,6 +161,26 @@ class StandardCOPSystem(COPSystem):
         for handler in handlers:
             if isinstance(handler, AnnotationHandler):
                 handler.handle_annotation(annotation)
+
+    def handle_annotation(self, annotation):
+        """Try to handle an annotation with active handlers."""
+        handlers = self.get_contexts("annotation_handler")
+        for handler in handlers:
+            if isinstance(handler, AnnotationHandler):
+                handler.handle_annotation(annotation)
+                return True
+        return False
+    
+    def store_pending_annotation(self, annotation):
+        """Store an annotation for later application."""
+        # Get or create the pending annotations list
+        pending_lists = self.get_contexts("pending_annotations")
+        if not pending_lists:
+            empty_list = []
+            self.push_context("pending_annotations", empty_list)
+            pending_lists = [empty_list]
+        # Add to the most recent pending list
+        pending_lists[-1].append(annotation)
     
     def push_context(self, context_type: str, context: Any) -> None:
         """Push a context to its stack."""
@@ -165,7 +220,78 @@ class StandardCOPSystem(COPSystem):
                 current_contexts[attr_name] = stack[-1]
                 
         return current_contexts
+
+    def determine_scope(self, frame=None):
+        """
+        Determine the enclosing scope of the current execution context.
         
+        Args:
+            frame: Optional frame to analyze (defaults to caller's frame)
+            
+        Returns:
+            The appropriate scope object (module, class, or function)
+        """
+        # Use caller's frame if none provided
+        if frame is None:
+            frame = inspect.currentframe().f_back
+        # Check if we're in a class definition
+        for var_name, var_value in frame.f_locals.items():
+            if (isinstance(var_value, type) and 
+                var_name in frame.f_code.co_names and 
+                var_value.__module__ == frame.f_globals.get('__name__')):
+                return var_value
+        # Check for function definition
+        if frame.f_code.co_name.startswith('<') and frame.f_code.co_name.endswith('>'):
+            context_info = inspect.getframeinfo(frame)
+            if context_info.code_context:
+                code_line = context_info.code_context[0].strip()
+                if code_line.startswith('def '):
+                    func_name = code_line.split('def ')[1].split('(')[0].strip()
+                    if func_name in frame.f_locals:
+                        return frame.f_locals[func_name]
+        
+        # Default to module scope
+        module_name = frame.f_globals['__name__']
+        return sys.modules[module_name]
+    
+    class StandardCOPSystem(COPSystem):
+    # Other methods unchanged...
+    
+    def handle_annotation(self, annotation):
+        """
+        Try to handle an annotation with active handlers.
+        
+        Args:
+            annotation: The annotation to handle
+            
+        Returns:
+            bool: True if handled, False otherwise
+        """
+        handlers = self.get_contexts("annotation_handler")
+        
+        for handler in handlers:
+            if hasattr(handler, "handle_annotation"):
+                handler.handle_annotation(annotation)
+                return True
+        
+        return False
+    
+    def store_pending_annotation(self, annotation):
+        """
+        Store an annotation for later application.
+        
+        Args:
+            annotation: The annotation to store
+        """
+        # Get or create the pending annotations list
+        pending_lists = self.get_contexts("pending_annotations")
+        if not pending_lists:
+            empty_list = []
+            self.push_context("pending_annotations", empty_list)
+            pending_lists = [empty_list]
+        
+        # Add to the most recent pending list
+        pending_lists[-1].append(annotation)
 
 class TracingCOPSystem(StandardCOPSystem):
     """COP system with tracing capabilities."""
