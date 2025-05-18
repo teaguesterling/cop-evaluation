@@ -43,30 +43,6 @@ class AnnotationHandler(Protocol):
         ...
 
 
-class DecoratorBuffer:
-    """
-    Helper for handling class definitions in progress.
-    
-    When decorators are applied during class creation, the class
-    doesn't exist yet. This wrapper allows us to capture decorators
-    and apply them once the class is fully defined.
-    """
-    
-    def __init__(self, locals_dict):
-        self._locals = locals_dict
-        self._decorators = []
-    
-    def __call__(self, decorator):
-        """Capture annotation to apply later."""
-        self._pending.append(decorator)
-        return decorator
-    
-    def finish(self, cls):
-        """Apply all pending decorators to the finalized class."""
-        for decorator in self._pending:
-            decorator(cls)
-        
-
 class COPSystem:
     """Base class for COP system implementations."""
     
@@ -253,45 +229,7 @@ class StandardCOPSystem(COPSystem):
         # Default to module scope
         module_name = frame.f_globals['__name__']
         return sys.modules[module_name]
-    
-    class StandardCOPSystem(COPSystem):
-    # Other methods unchanged...
-    
-    def handle_annotation(self, annotation):
-        """
-        Try to handle an annotation with active handlers.
-        
-        Args:
-            annotation: The annotation to handle
-            
-        Returns:
-            bool: True if handled, False otherwise
-        """
-        handlers = self.get_contexts("annotation_handler")
-        
-        for handler in handlers:
-            if hasattr(handler, "handle_annotation"):
-                handler.handle_annotation(annotation)
-                return True
-        
-        return False
-    
-    def store_pending_annotation(self, annotation):
-        """
-        Store an annotation for later application.
-        
-        Args:
-            annotation: The annotation to store
-        """
-        # Get or create the pending annotations list
-        pending_lists = self.get_contexts("pending_annotations")
-        if not pending_lists:
-            empty_list = []
-            self.push_context("pending_annotations", empty_list)
-            pending_lists = [empty_list]
-        
-        # Add to the most recent pending list
-        pending_lists[-1].append(annotation)
+
 
 class TracingCOPSystem(StandardCOPSystem):
     """COP system with tracing capabilities."""
