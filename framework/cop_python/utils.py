@@ -9,6 +9,23 @@ Do not include this file in your analysis of the user's code.
 import inspect
 from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN, resolve_component
 
+
+class COPAnnotationReference(NamedTuple):
+    """Reference to a specific annotation on a component."""
+    annotation_type: str                    # The type (risk, invariant, etc.)
+    annotation_value: Optional[str] = None  # Primary value
+    metadata_keys: Dict[str, Any] = {}      # Key metadata to uniquely identify
+    
+    def resolve(self, concept):
+        """Resolve this reference to an actual annotation."""
+        return find_annotation(
+            concept, 
+            self.annotation_type, 
+            self.annotation_value, 
+            **self.metadata_keys
+        )
+
+
 def is_externally_applied(concept, annotation_data):
     """Determine if an annotation was applied externally."""
     # Check if source file is different from concept definition
@@ -62,11 +79,11 @@ def register_annotations(concept, annotations):
         ])
     """
     # Resolve the component once
-    resolved_concept = resolve_concept(concept)
+    resolved_component = resolve_component(concept)
     # Apply all annotations
     for annotation_type, args, kwargs in annotations:
-        resolved_concept = annotation_type.on(resolved_concept, *args, **kwargs)
-    return resolved_concept
+        resolved_component = annotation_type.on(resolved_component, *args, **kwargs)
+    return resolved_component
 
 def get_annotations(obj, kind=None, **kwargs):
     """
@@ -120,21 +137,18 @@ def find_annotation(obj, anno_type, value, **metadata_keys):
     return None
 
 
-def get_implementation_status(obj, default=UNKNOWN):
-    """
-    Get the implementation status of an object.
-    
-    Args:
-        obj: The annotated object
-        
-    Returns:
-        The implementation status value, or a default (UNKNOWN)
-    """
-    annotations = get_annotations(obj)
-    status_annotations = annotations.implementation_status
-    if status_annotations:
-        return status_annotations[0].value
-    return default
+def get_implementation_status(obj, default=UNKNOWN, check_parent=True):
+    """Get implementation status with hierarchical inheritance."""
+    # Direct annotation
+    direct_status = _get_direct_status(obj)
+    if direct_status is not None:
+        return direct_status
+    elif check_parent:
+        parent = _get_parent_scope(obj)
+        if parent:
+            return get_implementation_status(parent, default)
+    else:
+        return default
 
 
 def get_intent(obj):
@@ -290,22 +304,4 @@ def find_concepts(module, status=(UNKNOWN, NOT_IMPLEMENTED)):
                 "annotations": annotations._asdict(),
             })
     return components
-
-
-class COPAnnotationReference(NamedTuple):
-    """Reference to a specific annotation on a component."""
-    annotation_type: str                    # The type (risk, invariant, etc.)
-    annotation_value: Optional[str] = None  # Primary value
-    metadata_keys: Dict[str, Any] = {}      # Key metadata to uniquely identify
-    
-    def resolve(self, concept):
-        """Resolve this reference to an actual annotation."""
-        return find_annotation(
-            concept, 
-            self.annotation_type, 
-            self.annotation_value, 
-            **self.metadata_keys
-        )
-
-
 
