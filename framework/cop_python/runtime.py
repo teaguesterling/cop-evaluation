@@ -70,7 +70,7 @@ class COPSystem:
         """Push a context to its stack."""
         raise NotImplementedError()
     
-    def pop_context(self, context_type: str) -> None:
+    def pop_context(self, context_type: str) -> Any:
         """Pop a context from its stack."""
         raise NotImplementedError()
     
@@ -106,7 +106,7 @@ class NoOpCOPSystem(COPSystem):
         """No-op implementation."""
         pass
     
-    def pop_context(self, context_type: str) -> None:
+    def pop_context(self, context_type: str) -> Any:
         """No-op implementation."""
         pass
     
@@ -162,11 +162,11 @@ class StandardCOPSystem(COPSystem):
         """Push a context to its stack."""
         self.contexts.get(context_type).append(context)
     
-    def pop_context(self, context_type: str) -> None:
+    def pop_context(self, context_type: str) -> Any:
         """Pop a context from its stack."""
         stack = self.contexts.get(context_type)
         if stack:
-            stack.pop()
+            return stack.pop()
     
     def get_contexts(self, context_type: str) -> List:
         """Get all contexts of a specific type."""
@@ -291,18 +291,16 @@ class TracingCOPSystem(StandardCOPSystem):
         """Pop a context from its stack with tracing."""
         stack_name = f"{context_type}_stack"
         context = None
-        
         if hasattr(self.contexts, stack_name):
             stack = getattr(self.contexts, stack_name)
             if stack:
                 context = stack[-1]  # Get the context before popping
-        
-        super().pop_context(context_type)
-        
+        ret = super().pop_context(context_type)
         if context:
             # Get source info with appropriate frame skipping
             source_info = self.get_source_info(skip_frames=2)  # Skip pop_context and caller
             self._add_trace("exit_context", context_type, context, source_info)
+        return ret
     
         def _add_trace(self, action: str, annotation_type: str, 
                   annotation: Any, source_info: SourceInfo) -> None:
