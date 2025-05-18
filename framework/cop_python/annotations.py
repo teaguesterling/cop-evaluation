@@ -8,7 +8,7 @@ Focus only on the annotations in the user's code, not on how they're implemented
 """
 from enum import Enum
 from typing import Optional, List, Union
-from .core import COPAnnotation, COPSingletonAnnotation
+from .core import COPAnnotation, COPSingletonAnnotation, make_cop_annotation_factory
 
 
 # Implementation status constants
@@ -323,11 +323,11 @@ class Decision(COPAnnotation):
 
 
 # Expose create methods for annotations
-intent = Intent.create
-implementation_status = ImplementationStatus.create
-invariant = Invariant.create
-risk = Risk.create
-decision = Decision.create
+intent = make_cop_annotation_factory(Intent)
+implementation_status = make_cop_annotation_factory(ImplementationStatus)
+invariant = make_cop_annotation_factory(Invariant)
+risk = make_cop_annotation_factory(Risk)
+decision = make_cop_annotation_factory(Decision)
 
 # Expose the ImplementationStatusValues as module-level constants
 IMPLEMENTED = ImplementationStatusValues.IMPLEMENTED         # ✅ Fully functional and complete

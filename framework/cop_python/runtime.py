@@ -44,6 +44,8 @@ class TraceEntry(NamedTuple):
 class COPAnnotationProtocol(Protocol):
     @classmethod
     def get_kind(self) -> str: ...
+    @classmethod
+    def on(self, concept: Any, *args, **kwargs) -> Any: ...
     def __call__(self, obj: Any) -> Any: ...
     def __enter_(self): ...
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool: ...
@@ -144,6 +146,10 @@ class COPNamespace:
 
     def get(self, key):
         """Get attribute value if it exists, or create default if not."""
+        # Handle COPAnnotationProtocol objects
+        if isinstance(key, COPAnnotationProtocol):
+            key = key.get_kind()
+            
         if key.startswith('_'):
             raise AttributeError(f"Cannot get private attribute '{key}'")
         

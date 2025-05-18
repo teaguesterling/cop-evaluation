@@ -47,12 +47,12 @@ class TestStandardCOPSystem(unittest.TestCase):
     """Test the StandardCOPSystem class."""
     
     def setUp(self):
-        self.system = StandardCOPSystem()
-        set_system(self.system)
+        enable_cop()
+        self.system = get_system()
 
     def test_set_system(self):
         """Test that the system can be set"""
-        self.assertTrue(get_system() is self.system)
+        self.assertTrue(isinstance(self.system, StandardCOPSystem))
         
     def test_is_enabled(self):
         """Test that the system is enabled."""

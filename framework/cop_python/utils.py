@@ -90,9 +90,20 @@ def register_annotations(concept, annotations):
 
 
 def _get_direct_annotations(obj, kind):
-    kind = kind.get_kind() if isinstance(kind, COPAnnotationProtocol) else kind
-    if hasattr(obj, "__cop_annotation__"): 
-        return obj.__cop_annotations__.get(kind)
+    if hasattr(obj, "__cop_annotations__"):
+        if kind is None:
+            # Return all annotations as a flat list
+            all_annotations = []
+            # Get all attributes of the namespace that are ConceptAnnotations
+            for key in dir(obj.__cop_annotations__):
+                if not key.startswith('_'):
+                    value = getattr(obj.__cop_annotations__, key)
+                    if isinstance(value, ConceptAnnotations):
+                        all_annotations.extend(value)
+            return all_annotations
+        else:
+            kind = kind.get_kind() if isinstance(kind, COPAnnotationProtocol) else kind
+            return obj.__cop_annotations__.get(kind)
     else:
         return []
 
@@ -117,11 +128,16 @@ def get_annotations(obj, kind=None, include_module_defaults=True):
     # Get direct annotations
     direct_annotations = _get_direct_annotations(obj, kind)
     annotations = ConceptAnnotations(direct_annotations)
-    if include_module_defaults and (parent := _get_parent_scope(obj)):  # Fixed missing parenthesis
+    if include_module_defaults and (parent := _get_parent_scope(obj)):
         parent_annotations = get_annotations(parent, kind, include_module_defaults=True)
-        singletons = [direct.kind for direct in direct_annotations if isinstance(direct, COPSingletonAnnotation)]  # Fixed typo
-        masked = [(direct.kind, direct.value) for direct in direct_annotations]
-        relevant = [a for a in parent_annotations if not ((a.kind, a.value) in masked and a.kind not in singletons)]
+        # Only filter if we have a specific kind
+        if kind is not None:
+            singletons = [direct.kind for direct in direct_annotations if isinstance(direct, COPSingletonAnnotation)]
+            masked = [(direct.kind, direct.value) for direct in direct_annotations]
+            relevant = [a for a in parent_annotations if not ((a.kind, a.value) in masked and a.kind not in singletons)]
+        else:
+            # For all annotations, just extend without filtering
+            relevant = parent_annotations
         annotations.extend(relevant)
     return annotations
 
@@ -160,8 +176,7 @@ def get_implementation_status(obj, default=UNKNOWN, check_parent=True):
         parent = _get_parent_scope(obj)
         if parent:
             return get_implementation_status(parent, default)
-    else:
-        return default
+    return default
 
 
 def get_intent(obj):
@@ -192,7 +207,7 @@ def get_risks(obj, category_in=None, severity_in=None, **kwargs):
     risks = _get_direct_annotations(obj, risk)
     if category_in is not None:
         risks = [risk for risk in risks if risk.metadata["category"] in category_in]
-    if severity is not None:
+    if severity_in is not None:
         risks = [risk for risk in risks if risk.metadata["severity"] in severity_in]
     risks = ConceptAnnotations(risks)
     return risks.filter(**kwargs)

@@ -10,6 +10,7 @@ from collections import UserList
 import inspect
 from .runtime import COPAnnotationProtocol, COPNamespace, COPError, SourceInfo, get_system, DISABLED, determine_scope, resolve_component
 from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union, Protocol, runtime_checkable, ClassVar
+import functools
 
 
 
@@ -227,17 +228,20 @@ class ConceptAnnotations(UserList):
         """Create a new set with annotations from both sets."""
         return self.__class__(self + list(other), on=self._explicit_scope)
     
-    def filter(self, kind=None, **kwargs):
+    def filter(self, kind:Optional[Union[str, COPAnnotationProtocol]]=None, **kwargs):
         """Filter annotations by type and/or properties."""
-        kind = kind if isinstance(kind, str) else kind.get_kind()
-        missing = object()
+        kind = kind if isinstance(kind, str) or kind is None else kind.get_kind()
         result = []
         for anno in self:
+            # Skip any annotations not in the specified kind
             if kind and anno.kind != kind:
                 continue
+            # Check if all the kwargs match in metadata
+            metadata = getattr(anno, 'metadata', {}) 
             for key, value in kwargs.items():
-                if getattr(anno, key, missing) is missing:
+                if metadata.get(key) != value:
                     break
+            # All checks passed
             else:
                 result.append(anno)
         return self.__class__(result, on=self._explicit_scope)
@@ -255,3 +259,50 @@ class ConceptAnnotations(UserList):
 # Create singleton instances
 _do_nothing_decorator = NoopCOPAnnotation()
 concept_annotations = ConceptAnnotations()
+
+
+def make_cop_annotation_factory(annotation_class, factory_method="create"):
+    """
+    Create a protocol-compliant factory function from an annotation class.
+    
+    This creates a class that implements COPAnnotationProtocol and acts as a factory.
+    """
+    factory_func = getattr(annotation_class, factory_method)
+    
+    class ProtocolCompliantFactory(COPAnnotationProtocol):
+        """A factory that implements COPAnnotationProtocol."""
+
+        # Preserve metadata from the original factory
+        __name__ = factory_func.__name__
+        __doc__ = factory_func.__doc__
+        __module__ = factory_func.__module__
+            
+        def __call__(self, *args, **kwargs):
+            """Create an annotation instance."""
+            return factory_func(*args, **kwargs)
+        
+        @classmethod
+        def get_kind(cls):
+            """Get the annotation kind from the underlying class."""
+            return annotation_class.get_kind()
+        
+        @classmethod
+        def on(cls, concept, *args, **kwargs):
+            """Apply annotation externally."""
+            return annotation_class.on(concept, *args, **kwargs)
+        
+        def __enter__(self):
+            """Context manager entry - create a temporary annotation."""
+            self._temp_annotation = annotation_class()
+            return self._temp_annotation.__enter__()
+        
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            """Context manager exit."""
+            if hasattr(self, '_temp_annotation'):
+                result = self._temp_annotation.__exit__(exc_type, exc_val, exc_tb)
+                del self._temp_annotation
+                return result
+            return False
+        
+    # Return an instance of our protocol-compliant factory
+    return ProtocolCompliantFactory()
