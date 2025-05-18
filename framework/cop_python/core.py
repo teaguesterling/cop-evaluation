@@ -191,24 +191,18 @@ class COPAnnotation:
         return obj
     
     def __call__(self, obj=None):
-        """
-        Apply annotation to an object or handle appropriately.
-        
-        Args:
-            obj: Optional object to annotate
-            
-        Returns:
-            The decorated object or self if no object provided
-        """
+        """Apply annotation to an object."""
         # Quick return if disabled
         if _current_system is DISABLED or not _current_system.is_enabled():
-            return obj
-        elif obj is not None:
+            return obj if obj is not None else self
+        
+        if obj is not None:
+            # Apply to the provided object
             return self._apply_to_object(obj)
-        else:
-            get_system().store_pending_annotation(self)
-            return self
-    
+        
+        # No object provided, return self
+        return self
+        
     def __enter__(self):
         """
         Enter annotation context (when used as context manager).
