@@ -54,10 +54,6 @@ class COPSystem:
         """Check if the system is tracing source positions."""
         raise NotImplementedError()
 
-    def store_pending_annotation(self, annotation: 'COPAnnotation'):
-        """Store an annotation in the annotation stack to be applied later"""
-        reise NotImplementedError()
-
     def notify_annotation_created(self, annotation: 'COPAnnotation'):
         """Notify all contexts that implement AnnotationHandler of a new COPAnnotation"""
         raise NotImplementedError()
@@ -97,10 +93,6 @@ class NoOpCOPSystem(COPSystem):
     def notify_annotation_created(self, annotation: 'COPAnnotation'):
         """No-op implementation."""
         pass
-
-    def store_pending_annotation(self, annotation: 'COPAnnotation'):
-        """No-op implementation."""
-        pass
     
     def push_context(self, context_type: str, context: Any) -> None:
         """No-op implementation."""
@@ -132,32 +124,35 @@ class StandardCOPSystem(COPSystem):
         return self.thread_contexts.contexts
 
     def notify_annotation_created(self, annotation: 'COPAnnotation'):
-        """Notify all handlers that an annotation was created."""
+        """
+        Process a newly created annotation using the context stack.
+        
+        This simplified method handles both notification and storage
+        using just the context stack.
+        
+        Args:
+            annotation: The annotation that was created
+        """
+        # Look for handlers in the context stack
         handlers = self.get_contexts("annotation_handler")
-        for handler in handlers:
-            if isinstance(handler, AnnotationHandler):
-                handler.handle_annotation(annotation)
-
-    def handle_annotation(self, annotation):
-        """Try to handle an annotation with active handlers."""
-        handlers = self.get_contexts("annotation_handler")
-        for handler in handlers:
-            if isinstance(handler, AnnotationHandler):
-                handler.handle_annotation(annotation)
-                return True
-        return False
-    
-    def store_pending_annotation(self, annotation):
-        """Store an annotation for later application."""
-        # Get or create the pending annotations list
-        pending_lists = self.get_contexts("pending_annotations")
-        if not pending_lists:
-            empty_list = []
-            self.push_context("pending_annotations", empty_list)
-            pending_lists = [empty_list]
+        
+        if handlers:
+            # If we have handlers, let the most recent one handle it
+            for handler in reversed(handlers):
+                if hasattr(handler, "handle_annotation"):
+                    handler.handle_annotation(annotation)
+                    return  # Handled, we're done
+        
+        # No handlers found, add to pending annotations
+        pending = self.get_contexts("pending_annotations")
+        if not pending:
+            # Create a pending annotations list if none exists
+            self.push_context("pending_annotations", [])
+            pending = self.get_contexts("pending_annotations")
+        
         # Add to the most recent pending list
-        pending_lists[-1].append(annotation)
-    
+        pending[-1].append(annotation)
+
     def push_context(self, context_type: str, context: Any) -> None:
         """Push a context to its stack."""
         self.contexts.get(context_type).append(context)
