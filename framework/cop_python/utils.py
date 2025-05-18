@@ -7,7 +7,7 @@ Do not include this file in your analysis of the user's code.
 """
 
 import inspect
-from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN, resolve_component
+from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN, resolve_component, COPAnnotationSet
 from .runtime import _get_parent_scope, get_system
 
 
@@ -86,27 +86,39 @@ def register_annotations(concept, annotations):
         resolved_component = annotation_type.on(resolved_component, *args, **kwargs)
     return resolved_component
 
-def get_annotations(obj, kind=None, **kwargs):
+
+def get_annotations(obj, kind=None, include_module_defaults=True):
     """
-    Get annotations from an object, optionally filtering for metadata
+    Get annotations from an object, optionally filtering for kind.
     
     Args:
         obj: The annotated object
         kind: Optional annotation kind to retrieve
-        **kwargs: any key-value pairs will include only annotations with matching metadata
+        include_module_defaults: Whether to include module-level defaults
+        
     Returns:
-        List of annotations of the specified kind, or entire namespace
+        COPAnnotationSet containing the requested annotations
     """
-    if not hasattr(obj, "__cop_annotations__"):
-        return [] if kind else COPAnnotations()
-    annotations = getattr(obj, "__cop_annotations__")
-    if kind is not None:
-        selected = getattr(annotations, kind)
-    else:
-        selected = annotations
-    for key, value in kwargs.items():
-        selected = [annotation for annotation in selected if annotation.metadata.get(key) == value]
-    return selected
+    # Get direct annotations
+    direct_annotations = _get_direct_annotations(obj, kind)
+    
+    # If not including module defaults or we have the requested kind, return
+    if not include_module_defaults or (kind and direct_annotations):
+        return COPAnnotationSet(direct_annotations)
+    
+    # Check parent scopes
+    parent = _get_parent_scope(obj)
+    if parent:
+        parent_annotations = get_annotations(parent, kind, True)
+        # Merge annotations (direct take precedence)
+        result = COPAnnotationSet(direct_annotations)
+        for anno in parent_annotations:
+            if not any(a.kind == anno.kind and getattr(a, 'value', None) == getattr(anno, 'value', None) 
+                      for a in direct_annotations):
+                result.append(anno)
+        return result
+    
+    return COPAnnotationSet(direct_annotations)
 
 
 def get_annotations_with_types(obj):
