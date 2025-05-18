@@ -32,6 +32,11 @@ KEY ANNOTATIONS:
 - @risk → Security vulnerabilities and other critical concerns
 - @invariant → Rules that must be maintained for correctness
 
+COP ANNOTATION SETS:
+ - with cop_annotations:  → Annotations apply to the object the context manager is in
+      intent("...")           (e.g., assigning intent("...") to a module
+ - COPAnnotationSet([intent("...")]).apply_to(OtherObject)  → Annotations apply to OtherObject
+
 Note: When both @intent and docstrings exist, @intent describes high-level intended purpose
 while docstrings provide implementation and usage details. Intent does not describe reality!
 
@@ -56,7 +61,7 @@ understand the code wastes context, reduces your helpfulness, and leads
 to incorrect assumptions about what functionality actually exists.
 """
 
-from .core import (
+from .annotations import (
     # What and Why:
     intent,                 # Purpose: What a component is supposed to do
     invariant,              # Rules: What must always be true about the code
@@ -72,4 +77,7 @@ from .core import (
     PLANNED,             # 📝 Designed but not implemented
     NOT_IMPLEMENTED,     # ❓ Does not exist at all
     UNKNOWN,             # ❔ Status not yet evaluated
+
+    ConceptAnnotations,   # Collection of related annotations (can be defined `on` or used to `assign_to` other components)
+    concept_annotations,  # context manager assigning all annotations to the object of the containing scope
 )
