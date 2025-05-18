@@ -18,25 +18,25 @@ For developers writing annotations: import cop_python.usage
 
 # Import only the minimal interface by default
 from .min import (
+    # COP annotations
     intent, 
     invariant, 
     implementation_status, 
-    human_decision,
-    security_risk,
-    critical_invariant,
-    mark_unimplemented,
-    mark_security_critical
-)
+    decision,
+    risk,
 
-# Constants for implementation status
-from .core import (
+    # COP Annotation collections
+    concept_annotations,
+    ConceptAnnotations,
+
+    # Implementation status constants (in order of completeness)
     IMPLEMENTED, 
     PARTIAL, 
+    BUGGY,
     PLANNED, 
+    DEPRECATED,
     NOT_IMPLEMENTED,
-    AUTOMATION_READY,
-    REQUIRES_JUDGMENT,
-    DEPRECATED
+    UNKNOWN,
 )
 
 # Only import validation functions if explicitly requested
@@ -46,16 +46,15 @@ __all__ = [
     'intent', 
     'invariant', 
     'implementation_status', 
-    'human_decision',
-    'security_risk',
-    'critical_invariant',
-    'mark_unimplemented',
-    'mark_security_critical',
+    'decision',
+    'risk',
+    'concept_annotations',
+    'ConceptAnnotations',
     'IMPLEMENTED', 
     'PARTIAL', 
+    'BUGGY',
+    'DEPRECATED',
     'PLANNED', 
     'NOT_IMPLEMENTED',
-    'AUTOMATION_READY',
-    'REQUIRES_JUDGMENT',
-    'DEPRECATED'
+    'UNKNOWN',
 ]

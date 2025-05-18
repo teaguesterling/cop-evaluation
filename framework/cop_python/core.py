@@ -8,14 +8,10 @@ Focus only on the annotations in the user's code, not on how they're implemented
 """
 from collections import UserList
 import inspect
-from .runtime import COPAnnotationPrototol, COPNamespace, _current_system, DISABLED
+from .runtime import COPAnnotationProtocol, COPNamespace, COPError, SourceInfo, _current_system, DISABLED
 import threading
-from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union, Protocol, runtime_checkable, Self
+from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union, Protocol, runtime_checkable, ClassVar
 
-
-class COPError(Exception):
-    """Base class for all COP-related exceptions."""
-    pass
 
 
 class DuplicateAnnotationError(COPError, ValueError):
@@ -48,7 +44,7 @@ class NoopCOPAnnotation(COPAnnotationProtocol):
     def __call__(self, obj):
         return obj
 
-    def __enter__(self: Self) -> Self:
+    def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
@@ -120,7 +116,7 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
         """Apply this annotation to an object."""
         # Ensure annotations namespace exists
         if not hasattr(obj, "__cop_annotations__"):
-            setattr(obj, "__cop_annotations__", COPNamespace())
+            setattr(obj, "__cop_annotations__", COPNamespace(default_factory=COPAnnotations))
         annotations = getattr(obj, "__cop_annotations__")
         annotations.get(self.kind).append(self)
         return obj
@@ -138,12 +134,12 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
         # No object provided, return self
         return self
         
-    def __enter__(self: Self) - Self:
+    def __enter__(self):
         """
         Enter annotation context (when used as context manager).
         
         Returns:
-            Self, for use in the context
+            self, for use in the context
         """
         # Short-circut with fast check for disabled
         if _current_system is DISABLED or not _current_system.is_enabled():
@@ -177,7 +173,7 @@ class COPSingletonAnnotation(COPAnnotation):
         super()._register_annotation(obj)
 
 
-class COPAnnotations(UserList):
+class ConceptAnnotations(UserList):
     """A collection of annotations."""
     
     def __init__(self, annotations=None, on=None):

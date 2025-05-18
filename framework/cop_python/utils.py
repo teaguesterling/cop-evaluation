@@ -6,7 +6,7 @@ This is an implementation detail of the COP framework.
 Do not include this file in your analysis of the user's code.
 """
 
-from .annotations import implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN
+from .annotations import implementation_status, risk, intent, invariant, decision, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN
 from .core import ConceptAnnotations, COPAnnotationProtocol, COPSingletonAnnotation
 import inspect
 from .runtime import _get_parent_scope, get_system, resolve_component
@@ -91,7 +91,7 @@ def register_annotations(concept, annotations):
 
 def _get_direct_annotations(obj, kind):
     kind = kind.get_kind() if isinstance(kind, COPAnnotationProtocol) else kind
-    if hasattr(obj, "__cop_annotation__"):  # Fixed from hasttr
+    if hasattr(obj, "__cop_annotation__"): 
         return obj.__cop_annotations__.get(kind)
     else:
         return []
@@ -209,7 +209,7 @@ def get_invariants(obj, scope_in=None, **kwargs):
     Returns:
         A list of applicable "risk" COPAnnotation's 
     """
-    invariants = _get_direct_annotation(obj, invariant)
+    invariants = _get_direct_annotations(obj, invariant)
     if scope_in is not None:
         invariants = [invariant for invariant in invariants if invariant.metadata["scope"] in scope_in]
     invariants = ConceptAnnotations(invariants)

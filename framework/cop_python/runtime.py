@@ -8,6 +8,11 @@ from typing import Any, Dict, List, Optional, Union, NamedTuple, Tuple, Protocol
 import types
 
 
+class COPError(Exception):
+    """Base class for all COP-related exceptions."""
+    pass
+
+
 class SourceInfo(NamedTuple):
     """Source code location information."""
     file: str                      # Source file path
@@ -87,14 +92,14 @@ class COPSystem:
 class COPNamespace:
     """Enhanced namespace for COP annotations with mapping support."""
     
-    def __init__(self, **kwargs):
+    def __init__(self, default_factory=list, **kwargs):
         """
         Initialize the namespace with empty lists as defaults.
         
         Args:
             **kwargs: Initial attributes to set
         """
-        self.__default_factory = list
+        self.__default_factory = default_factory
         for name, value in kwargs.items():
             setattr(self, name, value)
 
@@ -134,10 +139,24 @@ class COPNamespace:
     
     def __contains__(self, key):
         """Check if an annotation type exists."""
-        return hasattr(self, key) and (not key.startswith('_')
+        return hasattr(self, key) and not key.startswith('_')
 
     def get(self, key):
-        return self.__getattr__(key)
+        """Get attribute value if it exists, or create default if not."""
+        if key.startswith('_'):
+            raise AttributeError(f"Cannot get private attribute '{key}'")
+        
+        # Check if attribute already exists
+        if hasattr(self, key):
+            return getattr(self, key)
+        
+        # Create default value if attribute doesn't exist
+        if self.__default_factory is not None:
+            default = self.__default_factory()
+            setattr(self, key, default)
+            return default
+        
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
     
     def keys(self):
         """Get all annotation type names."""
