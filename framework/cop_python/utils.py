@@ -260,22 +260,33 @@ def get_current_annotations(annotation_class):
     return get_system().get_contexts(annotation_class.kind)
 
 
-def apply_cop_annotations(cls):
+def apply_cop_annotations(obj):
     """
-    Apply any pending COP annotations to a class.
-    
-    This can be used as a decorator after class definition
-    to apply annotations when standard inheritance isn't enough.
+    Apply any pending COP annotations to an object.
     
     Args:
-        cls: The class to apply annotations to
+        obj: The object to apply annotations to
         
     Returns:
-        The same class, with annotations applied
+        The object with annotations applied
     """
-    get_system().apply_pending_annotations(cls)
-    return cls
-
+    system = get_system()
+    pending = system.get_contexts("pending_annotations")
+    
+    # If no pending annotations, return early
+    if not pending or not pending[-1]:
+        return obj
+    
+    # Get the pending annotations and clear the list
+    annotations = pending[-1].copy()
+    pending[-1].clear()
+    
+    # Apply each annotation
+    for annotation in annotations:
+        annotation._apply_to_object(obj)
+    
+    return obj
+    
 
 def infer_applicable_status(func, default=UNKNOWN, 
                             unfinished_comments=("# TODO", "# FIXME"),
