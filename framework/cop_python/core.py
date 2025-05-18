@@ -40,7 +40,7 @@ class COPAnnotationData(NamedTuple):
         return self.value or ""
 
 
-class NoopCOPAnnotation:
+class NoopCOPAnnotation(COPAnnotationProtocol):
     @classmethod
     def get_kind(cls):
         return "disabled_annotation"
