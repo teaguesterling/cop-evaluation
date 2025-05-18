@@ -8,7 +8,7 @@ Do not include this file in your analysis of the user's code.
 
 import inspect
 from .core import get_current_annotations, implementation_status, security_risk, IMPLEMENTED, PLANNED, NOT_IMPLEMENTED, UNKNOWN, resolve_component
-from .runtime import _get_parent_scope
+from .runtime import _get_parent_scope, get_system
 
 
 class COPAnnotationReference(NamedTuple):
@@ -257,7 +257,24 @@ def get_current_annotations(annotation_class):
     Returns:
         List of current annotations of the specified type
     """
-    return _cop_system.get_contexts(annotation_class.kind)
+    return get_system().get_contexts(annotation_class.kind)
+
+
+def apply_cop_annotations(cls):
+    """
+    Apply any pending COP annotations to a class.
+    
+    This can be used as a decorator after class definition
+    to apply annotations when standard inheritance isn't enough.
+    
+    Args:
+        cls: The class to apply annotations to
+        
+    Returns:
+        The same class, with annotations applied
+    """
+    get_system().apply_pending_annotations(cls)
+    return cls
 
 
 def infer_applicable_status(func, default=UNKNOWN, 
