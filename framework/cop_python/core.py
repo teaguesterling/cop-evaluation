@@ -262,6 +262,28 @@ class COPSingletonAnnotation(COPAnnotation):
         super()._register_annotation(obj)
 
 
+class ConceptAnnotationsSet:
+    """Context manager for applying annotations to the current scope."""
+    
+    def __enter__(self):
+        # Determine the current scope
+        system = get_system()
+        self._scope = system.determine_scope(inspect.currentframe().f_back)
+        
+        # Register this context as a handler
+        system.push_context("annotation_handler", self)
+        return self
+    
+    def handle_annotation(self, annotation):
+        """Handle an annotation by applying it to the current scope."""
+        annotation._apply_to_object(self._scope)
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Unregister from handler context
+        get_system().pop_context("annotation_handler")
+        return False
+
+
 class intent(COPSingletonAnnotation):
     """
     Document the intended purpose of a concept.
@@ -581,26 +603,9 @@ class decision(COPAnnotation):
         
         super().__init__(brief, **metadata)
 
-
-class ConceptAnnotations:
-    """Context manager for applying annotations to the current scope."""
-    
-    def __enter__(self):
-        system = get_system()
-        self._scope = system.determine_scope(inspect.currentframe().f_back)
-        system.push_context("annotation_handler", self)
-        return self
-    
-    def handle_annotation(self, annotation):
-        """Apply annotation to the current scope."""
-        annotation(self._scope)
-        
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        get_system().pop_context("annotation_handler")
-        return False
     
 # Create singleton instance
-concept_annotations = ConceptAnnotations()
+concept_annotations = ConceptAnnotationSet()
 
 
 # Expose the ImplementationStatusValues as module-level constants
