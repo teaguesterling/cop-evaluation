@@ -204,7 +204,7 @@ class StandardCOPSystem(COPSystem):
             self.thread_contexts.contexts = COPNamespace()
         return self.thread_contexts.contexts
 
-    def notify_annotation_created(self, annotation: 'COPAnnotation'):
+    def notify_annotation_created(self, annotation):
         """
         Process a newly created annotation using the context stack.
         
