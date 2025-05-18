@@ -180,25 +180,14 @@ class COPAnnotation:
             source_info=self._source_info
         )
 
-    def _handle_implicit_call(self):
-        """Handle implicit call (with no object)."""
-        system = get_system()        
-        if not system.handle_annotation(self):
-            system.store_pending_annotation(self)
-        return self
-    
     def _apply_to_object(self, obj):
         """Apply this annotation to an object."""
         # Ensure annotations namespace exists
         if not hasattr(obj, "__cop_annotations__"):
             setattr(obj, "__cop_annotations__", COPNamespace())
-        
-        # Add this annotation to the object
-        annotations = getattr(obj, "__cop_annotations__")
-        annotation_list = annotations.get(self.kind)
         annotation_data = self._create_annotation_data()
-        annotation_list.append(annotation_data)
-        
+        annotations = getattr(obj, "__cop_annotations__")
+        annotations.get(self.kind).append(annotation_data)
         return obj
     
     def __call__(self, obj=None):
@@ -213,15 +202,12 @@ class COPAnnotation:
         """
         # Quick return if disabled
         if _current_system is DISABLED or not _current_system.is_enabled():
-            if obj is None:
-                return self
             return obj
-        
-        # Handle different application scenarios
-        if obj is None:
-            return self._handle_implicit_call()
-        else:
+        elif obj is not None:
             return self._apply_to_object(obj)
+        else:
+            get_system().store_pending_annotation(self)
+            return self
     
     def __enter__(self):
         """
