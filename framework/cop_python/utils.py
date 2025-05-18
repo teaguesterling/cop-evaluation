@@ -10,6 +10,7 @@ from .annotations import implementation_status, security_risk, IMPLEMENTED, PLAN
 from .core import ConceptAnnotations, COPAnnotationProtocol, COPSingletonAnnotation
 import inspect
 from .runtime import _get_parent_scope, get_system, resolve_component
+from typing import NamedTuple, Any, Dict, List, Optional, Union, Tuple
 
 
 class COPAnnotationReference(NamedTuple):
@@ -37,7 +38,7 @@ def is_externally_applied(concept, annotation_data):
     try:
         concept_file = inspect.getfile(concept)
         annotation_file = annotation_data.source_info.file
-        return component_file != annotation_file
+        return concept_file != annotation_file  # Fixed from component_file
     except:
         return False
 
@@ -90,7 +91,7 @@ def register_annotations(concept, annotations):
 
 def _get_direct_annotations(obj, kind):
     kind = kind.get_kind() if isinstance(kind, COPAnnotationProtocol) else kind
-    if hasttr(obj, "__cop_annotation__"):
+    if hasattr(obj, "__cop_annotation__"):  # Fixed from hasttr
         return obj.__cop_annotations__.get(kind)
     else:
         return []
@@ -116,9 +117,9 @@ def get_annotations(obj, kind=None, include_module_defaults=True):
     # Get direct annotations
     direct_annotations = _get_direct_annotations(obj, kind)
     annotations = ConceptAnnotations(direct_annotations)
-    if include_module_defaults and parent := _get_parent_scope(obj)
+    if include_module_defaults and (parent := _get_parent_scope(obj)):  # Fixed missing parenthesis
         parent_annotations = get_annotations(parent, kind, include_module_defaults=True)
-        singletons = [direct.kind for direct in direct_annotations if isinstace(direct, COPSingletonAnnotation)]
+        singletons = [direct.kind for direct in direct_annotations if isinstance(direct, COPSingletonAnnotation)]  # Fixed typo
         masked = [(direct.kind, direct.value) for direct in direct_annotations]
         relevant = [a for a in parent_annotations if not ((a.kind, a.value) in masked and a.kind not in singletons)]
         annotations.extend(relevant)
