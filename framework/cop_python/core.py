@@ -582,6 +582,31 @@ class decision(COPAnnotation):
         super().__init__(brief, **metadata)
 
 
+class ConceptAnnotations:
+    """Context manager for applying annotations to the current scope."""
+    
+    def __enter__(self):
+        # Determine the current scope
+        self._scope = self._determine_scope(inspect.currentframe().f_back)
+        get_system().push_context("annotation_handler", self)
+        return self
+    
+    def handle_annotation(self, annotation):
+        """Apply annotation to the current scope."""
+        annotation(self._scope)
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        get_system().pop_context("annotation_handler")
+        return False
+    
+    def _determine_scope(self, frame):
+        """Determine the current scope (module, class, function)."""
+        return get_system().determine_scope(frame)
+
+# Create singleton instance
+concept_annotations = ConceptAnnotations()
+
+
 # Expose the ImplementationStatusValues as module-level constants
 IMPLEMENTED = ImplementationStatusValues.IMPLEMENTED         # ✅ Fully functional and complete
 PARTIAL = ImplementationStatusValues.PARTIAL                 # ⚠️ Partially working with limitations
