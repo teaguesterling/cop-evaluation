@@ -6,11 +6,10 @@ DO NOT INCLUDE THIS FILE IN YOUR ANALYSIS.
 This is implementation detail of the COP framework.
 Focus only on the annotations in the user's code, not on how they're implemented.
 """
+from collections import UserList
 import inspect
 import threading
-
-from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union, Protocol, ClassVar
-from .runtime import _current_system, DISABLED, resolve_concept, COPNamespace
+from typing import NamedTuple, Any, Dict, Optional, List, Type, Callable, Union, Protocol, runtime_checkable
 
 
 class COPError(Exception):
@@ -48,7 +47,7 @@ class COPAnnotationProtocol(Protocol):
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool: ...
 
 
-class NoopCOPAnnotation(COPAnnotationProtocol):
+class NoopCOPAnnotation:
     @classmethod
     def get_kind(cls):
         return "disabled_annotation"
@@ -61,6 +60,9 @@ class NoopCOPAnnotation(COPAnnotationProtocol):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         return False
+
+# A no-op singleton to allow the API to progress when the system is disabled
+_do_nothing_decorator = NoopCOPAnnotation()
 
 
 class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
@@ -83,10 +85,11 @@ class COPAnnotation(COPAnnotationData, COPAnnotationProtocol):
     @classmethod
     def _make_metadata(cls, value, kwargs):
         return kwargs
-
+        
     @classmethod
     def get_kind(cls):
-        return self.annotation_type or self.__class__.__name__
+        """Get the annotation kind."""
+        return cls.annotation_type or cls.__name__
 
     @classmethod
     def on(cls, concept, *args, **kwargs):
