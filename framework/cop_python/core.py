@@ -254,4 +254,4 @@ class COPAnnotations(UserList):
     
 # Create singleton instances
 _do_nothing_decorator = NoopCOPAnnotation()
-concept_annotations = ConceptAnnotationSet()
+concept_annotations = ConceptAnnotations()
