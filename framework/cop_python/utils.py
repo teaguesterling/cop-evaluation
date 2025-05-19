@@ -158,12 +158,66 @@ def find_annotation(obj, anno_type, value, **metadata_keys):
     return None
 
 
+def get_annotations_namespace(obj):
+    """
+    Get the annotations namespace for an object.
+    
+    Args:
+        obj: The annotated object
+        
+    Returns:
+        COPNamespace containing the annotations
+    """
+    from .runtime import COPNamespace
+    # Return the actual namespace or a new empty one
+    if hasattr(obj, "__cop_annotations__"):
+        return obj.__cop_annotations__
+    else:
+        return COPNamespace()
+
+
 def get_all_annotations(obj):
+    """
+    Get all annotations on an object as a flat list.
     
-    if not hasattr(obj, "__cop_annotations__"):
-        return COPAnnotations([])
+    Args:
+        obj: The annotated object
+        
+    Returns:
+        ConceptAnnotations containing all annotations (a copy to avoid abstraction leaks)
+    """
+    namespace = get_annotations_namespace(obj)
+    all_annotations = []
     
-    annotation_namespace = obj.__cop_annotations__
+    # Use the keys() method which filters correctly
+    for anno_type in namespace.keys():
+        annotations_list = getattr(namespace, anno_type)
+        # Create copies to avoid abstraction leaks
+        all_annotations.extend(list(annotations_list))
+    
+    return ConceptAnnotations(all_annotations)
+
+
+def get_all_annotations_dict(obj):
+    """
+    Get all annotations on an object as a dictionary.
+    
+    Args:
+        obj: The annotated object
+        
+    Returns:
+        Dict mapping annotation types to ConceptAnnotations objects (copies to avoid abstraction leaks)
+    """
+    namespace = get_annotations_namespace(obj)
+    result = {}
+    
+    # Use the keys() method which filters correctly
+    for anno_type in namespace.keys():
+        # Create a copy of the ConceptAnnotations to avoid abstraction leaks
+        original = getattr(namespace, anno_type)
+        result[anno_type] = ConceptAnnotations(list(original))
+    
+    return result
 
 
 def get_implementation_status(obj, default=UNKNOWN, check_parent=True):

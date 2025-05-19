@@ -11,8 +11,8 @@ import datetime
 from typing import Any, Dict, List, NamedTuple, Optional, Set, Union
 
 from ..runtime import get_system
-from ..utils import COPAnnotationReference
-from .core import COPTestData
+from ..utils import COPAnnotationReference, get_annotations_namespace
+from .foundation import COPTestData
 
 # Define result enum for better type safety
 class VerificationResult(enum.Enum):
@@ -68,8 +68,7 @@ def _get_verification_registry():
     
     # Create if it doesn't exist
     if not registry:
-        from ..core import COPNamespace
-        registry = COPNamespace()
+        registry = {}
         system.push_context(registry_key, registry)
     
     return registry
@@ -112,16 +111,11 @@ def register_test_verification(test_func, component, annotation_reference, test_
     
     # Initialize if needed
     anno_type = annotation_reference.annotation_type
-    if not hasattr(registry, anno_type):
-        setattr(registry, anno_type, {})
-    
-    type_registry = getattr(registry, anno_type)
+    type_registry = registry.setdefault(anno_type, {})
     
     # Use component_id as key for better lookup
-    if component_id not in type_registry:
-        type_registry[component_id] = []
-    
-    type_registry[component_id].append(record)
+    component_records = type_registry.setdefault(component_id, [])
+    component_records.append(record)
     
     return record
 
@@ -152,8 +146,8 @@ def record_verification_result(test_func, component, annotation_reference,
     registry = _get_verification_registry()
     anno_type = annotation_reference.annotation_type
     
-    if hasattr(registry, anno_type) and component_id in getattr(registry, anno_type):
-        records = getattr(registry, anno_type)[component_id]
+    if anno_type in registry and component_id in registry[anno_type]:
+        records = registry[anno_type][component_id]
         
         for i, record in enumerate(records):
             if record.test_id == test_id and record.annotation_reference == annotation_reference:
@@ -186,16 +180,10 @@ def record_verification_result(test_func, component, annotation_reference,
         exception=exception
     )
     
-    # Store in registry
-    if not hasattr(registry, anno_type):
-        setattr(registry, anno_type, {})
-    
-    type_registry = getattr(registry, anno_type)
-    
-    if component_id not in type_registry:
-        type_registry[component_id] = []
-    
-    type_registry[component_id].append(record)
+    # Store in registry  
+    type_registry = registry.setdefault(anno_type, {})
+    component_records = type_registry.setdefault(component_id, [])
+    component_records.append(record)
     
     return record
 
@@ -221,14 +209,13 @@ def get_verification_results(component=None, annotation_type=None):
             component_id = f"{component.__module__}.{component.__name__}" if hasattr(component, "__name__") else str(component)
     
     # Filter by annotation type if specified
-    types_to_check = [annotation_type] if annotation_type else dir(registry)
+    types_to_check = [annotation_type] if annotation_type else registry.keys()
     
     for anno_type in types_to_check:
-        # Skip non-annotation attributes
-        if anno_type.startswith('_') or not hasattr(registry, anno_type):
+        if anno_type not in registry:
             continue
         
-        type_registry = getattr(registry, anno_type)
+        type_registry = registry[anno_type]
         
         # Filter by component if specified
         if component_id:
@@ -251,11 +238,26 @@ def clear_verification_registry():
         system.pop_context(registry_key)
     
     # Create fresh registry
-    from ..core import COPNamespace
-    registry = COPNamespace()
+    registry = {}
     system.push_context(registry_key, registry)
     
     return registry
+
+def register_verification_failure(component, annotation_type, annotation_args, failure_type, failure_reason):
+    """
+    Register a verification failure.
+    
+    Args:
+        component: The component that failed verification
+        annotation_type: Type of annotation that failed
+        annotation_args: Arguments to the annotation
+        failure_type: Type of failure (exception name)
+        failure_reason: Reason for failure
+    """
+    # This is a placeholder for now - we could extend this to track failures
+    # For now, we'll just pass through the failure
+    pass
+
 
 def generate_verification_report(module=None):
     """
@@ -280,6 +282,19 @@ def generate_verification_report(module=None):
             # Check if object has any COP annotations
             if hasattr(obj, "__cop_annotations__"):
                 components_to_check.append(obj)
+    else:
+        # No module specified, get components from verification registry
+        registry = _get_verification_registry()
+        component_set = set()
+        
+        # Gather all unique components from registry
+        for anno_type, type_registry in registry.items():
+            for component_id, records in type_registry.items():
+                for record in records:
+                    if record.component:
+                        component_set.add(record.component)
+        
+        components_to_check = list(component_set)
     
     # For each component, check its annotations and verification status
     for component in components_to_check:
@@ -287,15 +302,13 @@ def generate_verification_report(module=None):
         if not component_id:
             component_id = f"{component.__module__}.{component.__name__}" if hasattr(component, "__name__") else str(component)
         
-        annotations = getattr(component, "__cop_annotations__")
+        # Use utility function to get annotations namespace
+        annotations = get_annotations_namespace(component)
         all_component_annotations = []
         
-        # Collect all annotations on the component
-        for anno_type in dir(annotations):
-            if anno_type.startswith('_'):
-                continue
-                
-            for anno in getattr(annotations, anno_type):
+        # Collect all annotations on the component using keys() method
+        for anno_type in annotations.keys():
+            for anno in annotations[anno_type]:
                 all_component_annotations.append({
                     "type": anno_type,
                     "value": anno.value,

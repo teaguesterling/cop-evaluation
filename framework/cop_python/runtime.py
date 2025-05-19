@@ -1,4 +1,5 @@
 from collections import UserList
+from collections.abc import Sequence
 import datetime
 import importlib
 import inspect
@@ -42,12 +43,17 @@ class TraceEntry(NamedTuple):
 
 @runtime_checkable
 class COPAnnotationProtocol(Protocol):
+
     @classmethod
     def get_kind(self) -> str: ...
+
     @classmethod
     def on(self, concept: Any, *args, **kwargs) -> Any: ...
+
     def __call__(self, obj: Any) -> Any: ...
+
     def __enter_(self): ...
+
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool: ...
 
 
@@ -55,9 +61,7 @@ class COPAnnotationProtocol(Protocol):
 class AnnotationHandler(Protocol):
     """Protocol defining the interface for handling annotations."""
     
-    def handle_annotation(self, annotation: COPAnnotationProtocol) -> None:
-        """Handle a newly created annotation."""
-        ...
+    def handle_annotation(self, annotation: COPAnnotationProtocol) -> None: ...
 
 
 class COPSystem:
@@ -131,18 +135,17 @@ class COPNamespace:
     
     def __getitem__(self, key):
         """Support dictionary-style access."""
-        return self.__getattr__(key)
+        return getattr(self, key)
 
     def __setitem__(self, key, value):
         """Prevent dictionary-style assignment."""
-        raise TypeError(
-            f"Dictionary-style assignment not supported for COPNamespace. "
-            f"Use attribute style instead: annotations.{key} = {value!r}"
-        )
+        return self.__setattr__(key, value)
     
     def __contains__(self, key):
         """Check if an annotation type exists."""
-        return hasattr(self, key) and not key.startswith('_')
+        # Don't use hasattr because it triggers __getattr__
+        # Instead, check the actual instance dictionary
+        return key in self.__dict__ and not key.startswith('_')
 
     def get(self, key):
         """Get attribute value if it exists, or create default if not."""
@@ -168,7 +171,8 @@ class COPNamespace:
     def keys(self):
         """Get all annotation type names."""
         return [attr for attr in dir(self) 
-                if not attr.startswith('_') and isinstance(getattr(self, attr), list)]
+                if not attr.startswith('_') and isinstance(getattr(self, attr), Sequence) 
+                and not isinstance(getattr(self, attr), (str, bytes))]
     
     def values(self):
         """Get all annotation lists."""
