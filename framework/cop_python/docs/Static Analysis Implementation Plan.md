@@ -811,4 +811,46 @@ These enhancements will significantly improve the utility of the concept graph, 
 4. Integrate test relationship extraction to connect tests and components
 5. Implement annotation updating based on test results
 
+## Database Integration and Advanced Tools
+
+Based on our exploration of DuckDB as a query engine for our exported data, we've identified several additional enhancements to improve the utility of our static analysis:
+
+### 1. Schema Optimization for Database Queries
+
+Improve the exported JSONL format to better support SQL and graph queries:
+
+- Create formal schema definitions for DuckDB
+- Standardize component_info format for easier query access
+- Add indices for commonly queried fields
+- Create predefined views for common query patterns
+
+### 2. DuckPGQ Integration for Graph Queries
+
+Fully leverage graph query capabilities for traversing code relationships:
+
+- Provide helpers for creating property graphs from our exports
+- Create examples of useful Cypher queries for code navigation
+- Implement common graph algorithms (centrality, shortest path)
+- Add documentation for graph-based code analysis patterns
+
+### 3. Incremental Update System
+
+Develop an efficient update mechanism to keep the database in sync with code changes:
+
+- Create git hooks for automatic updates on commit/push
+- Implement differential parsing to only process changed files
+- Track component history across git commits
+- Add timestamp metadata for change tracking
+
+### 4. Code Manipulation Tools
+
+Build higher-level tools that leverage the metadata for code modification:
+
+- Create a symbolic function updater that uses line boundaries
+- Implement annotation-aware refactoring tools
+- Build an impact analysis system for proposed changes
+- Develop automatic migration tools for annotation updates
+
+These enhancements will transform our static analysis from a data extraction tool into a comprehensive code intelligence platform that supports sophisticated queries, efficient updates, and high-level code manipulation.
+
 These changes align with the vision outlined in the COP framework documentation, particularly the concept of a living knowledge system that captures the relationships between intent, implementation, and verification.
