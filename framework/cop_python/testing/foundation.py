@@ -1,7 +1,8 @@
 import functools
 import inspect
 import threading
-from ..runtime import get_system
+from typing import Any, Dict, Optional, NamedTuple
+from ..runtime import get_system, SourceInfo
 from ..utils import COPAnnotationReference
 
 
@@ -14,8 +15,8 @@ class InvariantViolation(COPAnnotationViolation):
     """Raised when an invariant is violated."""
     pass
 
-class SecurityRiskViolation(COPAnnotationViolation):
-    """Raised when a security requirement is violated."""
+class RiskViolation(COPAnnotationViolation):
+    """Raised when a risk mitigation requirement is violated."""
     pass
 
 class ImplementationStatusMismatch(COPAnnotationViolation):
@@ -130,7 +131,7 @@ class tests_concept:
                 original_setup(self)
             
             # Set component context
-            get_system().push_context("test_component", cls.__cop_concept_component__)
+            get_system().push_context("test_concept", cls.__cop_concept_component__)
             
             # Make component available to test methods
             self.concept = cls.__cop_concept_component__
@@ -154,9 +155,10 @@ class tests_concept:
 
 # Utility functions
 
-def get_current_concept():
+def get_current_component():
     """Get the component currently being tested."""
-    return get_system().get_current_context("test_concept")
+    current_contexts = get_system().get_contexts("test_concept")
+    return current_contexts[-1] if current_contexts else None
 
 def set_current_annotation_type(annotation_type):
     """Set the current annotation type being tested."""
@@ -164,7 +166,8 @@ def set_current_annotation_type(annotation_type):
 
 def get_current_annotation_type():
     """Get the current annotation type being tested."""
-    return get_system().get_current_context("test_annotation_type")
+    current_contexts = get_system().get_contexts("test_annotation_type")
+    return current_contexts[-1] if current_contexts else None
     
 
 def get_test_id(test_func):

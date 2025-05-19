@@ -8,9 +8,9 @@ through the enhanced annotation classes.
 from typing import Any, Optional, Dict, Type, Callable
 
 # Re-export the exception classes
-from .annotations import (
+from .foundation import (
     InvariantViolation,
-    SecurityRiskViolation,
+    RiskViolation,
     ImplementationStatusMismatch,
     DecisionViolation,
     IntentViolation

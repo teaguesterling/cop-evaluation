@@ -9,9 +9,9 @@ allowing them to be used for test verification and externalized definitions.
 import functools
 import inspect
 from typing import Any, Optional, Dict, Type, Callable, List
-from .. import core
+from .. import core as cop_core
 from ..utils import get_annotations, COPAnnotationReference
-from .core import (
+from .foundation import (
     COPTestData, get_test_id, set_current_annotation_type, 
     get_current_component, COPAnnotationViolation,
     InvariantViolation, RiskViolation, ImplementationStatusMismatch,
@@ -40,12 +40,12 @@ class COPAnnotationTestingMixin:
                 test_id=get_test_id(test_func),
                 annotation_reference=annotation_reference,
                 test_metadata=kwargs.get("test_metadata", {}),
-                source_info=core._cop_system.get_source_info()
+                source_info=cop_core.get_system().get_source_info(skip_frames=2)
             )
             
             # Add to component's __cop_tests__
             if not hasattr(component, "__cop_tests__"):
-                setattr(component, "__cop_tests__", core.COPNamespace())
+                setattr(component, "__cop_tests__", cop_core.COPNamespace())
             
             # Get list for this annotation type
             tests_list = getattr(component.__cop_tests__, cls.__name__)
@@ -172,15 +172,15 @@ class COPAnnotationTestingMixin:
     @classmethod
     def _enter_context(cls, annotation):
         """Enter annotation context."""
-        core._cop_system.push_context(cls.__name__, annotation)
+        cop_core.get_system().push_context(cls.get_kind(), annotation)
     
     @classmethod
     def _exit_context(cls, annotation):
         """Exit annotation context."""
-        core._cop_system.pop_context(cls.__name__)
+        cop_core.get_system().pop_context(cls.get_kind())
 
 
-def create_cop_testing_subclass(annotation_cls: Type[core.COPAnnotation], exception_cls: Type[core.COPAnnotationViolation]):
+def create_cop_testing_subclass(annotation_cls: Type[cop_core.COPAnnotation], exception_cls: Type[COPAnnotationViolation]):
     """Create a testing-enhanced subclass of a COP annotation."""
     testing_cls = type(
         f"{annotation_cls.__name__}", 
@@ -203,8 +203,8 @@ def create_cop_testing_subclass(annotation_cls: Type[core.COPAnnotation], except
     return testing_annotation
 
 # Create testing-enhanced versions of core annotations
-intent = create_cop_testing_subclass(core.intent, IntentViolation)
-implementation_status = create_cop_testing_subclass(core.implementation_status, ImplementationStatusMismatch)
-risk = create_cop_testing_subclass(core.risk, RiskViolation)
-invariant = create_cop_testing_subclass(core.invariant, InvariantViolation)
-decision = create_cop_testing_subclass(core.decision, DecisionViolation)
+intent = create_cop_testing_subclass(cop_core.intent, IntentViolation)
+implementation_status = create_cop_testing_subclass(cop_core.implementation_status, ImplementationStatusMismatch)
+risk = create_cop_testing_subclass(cop_core.risk, RiskViolation)
+invariant = create_cop_testing_subclass(cop_core.invariant, InvariantViolation)
+decision = create_cop_testing_subclass(cop_core.decision, DecisionViolation)
