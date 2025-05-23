@@ -13,6 +13,8 @@ import importlib.util
 from pathlib import Path
 from typing import Dict, List, Any, Tuple, Optional, Set, Union, NamedTuple
 
+from cop_python.analysis.metrics import get_default_metrics_providers, MetricsProvider
+
 
 class AnnotationInfo(NamedTuple):
     """Information about a COP annotation."""
@@ -27,6 +29,7 @@ class AnnotationInfo(NamedTuple):
     start_line: int       # Start line of the component definition (including decorators)
     end_line: int         # End line of the component definition
     actual_start_line: int  # Start line of the actual component (after decorators)
+    metrics: Dict[str, Any] = {}  # Metrics for the component (complexity, size, etc)
 
 
 class COPAnnotationVisitor(ast.NodeVisitor):
@@ -37,12 +40,13 @@ class COPAnnotationVisitor(ast.NodeVisitor):
         "intent", "invariant", "risk", "implementation_status", "decision"
     }
     
-    def __init__(self, file_path: str, source_code: str):
+    def __init__(self, file_path: str, source_code: str, metrics_providers: List[MetricsProvider] = None):
         self.file_path = file_path
         self.source_code = source_code
         self.module_name = self._get_module_name(file_path)
         self.annotations = []
         self.current_class = None
+        self.metrics_providers = metrics_providers or get_default_metrics_providers()
     
     def _get_module_name(self, file_path: str) -> str:
         """Extract module name from file path."""
@@ -270,6 +274,29 @@ class COPAnnotationVisitor(ast.NodeVisitor):
             return repr(node.n)
         else:
             return "<complex_expression>"
+            
+    def _extract_metrics(self, node: ast.AST, component_type: str) -> Dict[str, Any]:
+        """
+        Extract metrics using all registered providers.
+        
+        Args:
+            node: AST node for the component
+            component_type: Type of the component (function, class, method)
+            
+        Returns:
+            Dictionary with combined metrics from all providers
+        """
+        metrics = {}
+        for provider in self.metrics_providers:
+            try:
+                provider_metrics = provider.calculate_metrics(
+                    component_type, node, self.file_path
+                )
+                metrics.update(provider_metrics)
+            except Exception as e:
+                print(f"Warning: Metrics provider {provider.__class__.__name__} failed: {e}")
+        
+        return metrics
     
     def _process_decorators(self, node: Union[ast.FunctionDef, ast.ClassDef]):
         """Process decorators for a function or class definition."""
@@ -281,6 +308,9 @@ class COPAnnotationVisitor(ast.NodeVisitor):
         
         # Get line range information
         start_line, end_line, actual_start_line = self._get_node_line_range(node)
+        
+        # Extract metrics
+        metrics = self._extract_metrics(node, component_type)
         
         for decorator in node.decorator_list:
             if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Name):
@@ -300,7 +330,8 @@ class COPAnnotationVisitor(ast.NodeVisitor):
                         component_info=component_info,
                         start_line=start_line,
                         end_line=end_line,
-                        actual_start_line=actual_start_line
+                        actual_start_line=actual_start_line,
+                        metrics=metrics
                     )
                     
                     self.annotations.append(annotation)
@@ -318,7 +349,8 @@ class COPAnnotationVisitor(ast.NodeVisitor):
                     component_info=component_info,
                     start_line=start_line,
                     end_line=end_line,
-                    actual_start_line=actual_start_line
+                    actual_start_line=actual_start_line,
+                    metrics=metrics
                 )
                 
                 self.annotations.append(annotation)
@@ -344,12 +376,14 @@ class COPAnnotationVisitor(ast.NodeVisitor):
         # as COP annotations are applied as decorators
 
 
-def extract_annotations_from_file(file_path: str) -> List[AnnotationInfo]:
+def extract_annotations_from_file(file_path: str, 
+                               metrics_providers: List[MetricsProvider] = None) -> List[AnnotationInfo]:
     """
     Extract COP annotations from a Python file.
     
     Args:
         file_path: Path to the Python file
+        metrics_providers: Optional list of metrics providers to use
         
     Returns:
         List of extracted annotations
@@ -366,19 +400,21 @@ def extract_annotations_from_file(file_path: str) -> List[AnnotationInfo]:
         return []
     
     # Extract annotations
-    visitor = COPAnnotationVisitor(file_path, source_code)
+    visitor = COPAnnotationVisitor(file_path, source_code, metrics_providers)
     visitor.visit(tree)
     
     return visitor.annotations
 
 
-def extract_annotations_from_directory(directory: str, recursive: bool = True) -> List[AnnotationInfo]:
+def extract_annotations_from_directory(directory: str, recursive: bool = True,
+                                  metrics_providers: List[MetricsProvider] = None) -> List[AnnotationInfo]:
     """
     Extract COP annotations from all Python files in a directory.
     
     Args:
         directory: Directory to scan
         recursive: Whether to recursively scan subdirectories
+        metrics_providers: Optional list of metrics providers to use
         
     Returns:
         List of extracted annotations
@@ -388,7 +424,7 @@ def extract_annotations_from_directory(directory: str, recursive: bool = True) -
     # Get Python files
     pattern = "**/*.py" if recursive else "*.py"
     for file_path in Path(directory).glob(pattern):
-        file_annotations = extract_annotations_from_file(str(file_path))
+        file_annotations = extract_annotations_from_file(str(file_path), metrics_providers)
         all_annotations.extend(file_annotations)
     
     return all_annotations

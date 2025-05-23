@@ -73,7 +73,7 @@ class ConceptNode(Node):
     def __init__(self, id: str, component_type: str, file_path: str, 
                  name: str, component_info: Dict[str, Any] = None, 
                  start_line: int = None, end_line: int = None, actual_start_line: int = None,
-                 properties: Dict[str, Any] = None):
+                 metrics: Dict[str, Any] = None, properties: Dict[str, Any] = None):
         super().__init__(id, NodeType.COMPONENT, properties or {})
         self.component_type = component_type
         self.file_path = file_path
@@ -82,6 +82,7 @@ class ConceptNode(Node):
         self.start_line = start_line
         self.end_line = end_line
         self.actual_start_line = actual_start_line
+        self.metrics = metrics or {}
         
         # Update properties
         self.properties.update({
@@ -97,6 +98,8 @@ class ConceptNode(Node):
             self.properties["end_line"] = end_line
         if actual_start_line is not None:
             self.properties["actual_start_line"] = actual_start_line
+        if metrics:
+            self.properties["metrics"] = metrics
 
 
 class AnnotationNode(Node):
@@ -375,7 +378,8 @@ class ConceptGraph:
                     component_info=anno.component_info,
                     start_line=anno.start_line,
                     end_line=anno.end_line,
-                    actual_start_line=anno.actual_start_line
+                    actual_start_line=anno.actual_start_line,
+                    metrics=anno.metrics
                 )
                 components[anno.component_name] = component
                 self.add_node(component)
@@ -540,6 +544,7 @@ class ConceptGraph:
                     start_line=node_data.get("start_line"),
                     end_line=node_data.get("end_line"),
                     actual_start_line=node_data.get("actual_start_line"),
+                    metrics=node_data.get("metrics"),
                     properties=node_data
                 )
             elif node_type == NodeType.ANNOTATION:
