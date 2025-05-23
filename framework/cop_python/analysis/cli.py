@@ -24,23 +24,42 @@ def extract_command(args):
     recursive = not args.no_recursive
     output_file = args.output
     
+    # Parse default annotations
+    default_annotations = {}
+    if hasattr(args, 'default_implementation_status') and args.default_implementation_status:
+        default_annotations["implementation_status"] = args.default_implementation_status
+    if hasattr(args, 'default_risk') and args.default_risk:
+        default_annotations["risk"] = args.default_risk
+    
     if os.path.isfile(path):
-        annotations = extract_annotations_from_file(path)
+        annotations = extract_annotations_from_file(path, default_annotations=default_annotations)
     else:
-        annotations = extract_annotations_from_directory(path, recursive)
+        annotations = extract_annotations_from_directory(path, recursive, default_annotations=default_annotations)
     
     # Print summary
     print(f"Found {len(annotations)} annotations:")
     
-    # Group by type
+    # Group by type and track defaults
     by_type = {}
+    defaults_count = 0
     for anno in annotations:
         if anno.annotation_type not in by_type:
-            by_type[anno.annotation_type] = 0
-        by_type[anno.annotation_type] += 1
+            by_type[anno.annotation_type] = {"total": 0, "defaults": 0}
+        by_type[anno.annotation_type]["total"] += 1
+        if anno.metadata.get("is_default", False):
+            by_type[anno.annotation_type]["defaults"] += 1
+            defaults_count += 1
     
-    for anno_type, count in by_type.items():
-        print(f"- {anno_type}: {count}")
+    for anno_type, counts in by_type.items():
+        total = counts["total"]
+        defaults = counts["defaults"]
+        if defaults > 0:
+            print(f"- {anno_type}: {total} ({defaults} defaults)")
+        else:
+            print(f"- {anno_type}: {total}")
+    
+    if defaults_count > 0:
+        print(f"\nTotal default annotations added: {defaults_count}")
     
     # Export to JSON if requested
     if output_file:
@@ -57,11 +76,18 @@ def build_command(args):
     recursive = not args.no_recursive
     output_file = args.output
     
+    # Parse default annotations
+    default_annotations = {}
+    if hasattr(args, 'default_implementation_status') and args.default_implementation_status:
+        default_annotations["implementation_status"] = args.default_implementation_status
+    if hasattr(args, 'default_risk') and args.default_risk:
+        default_annotations["risk"] = args.default_risk
+    
     # Extract annotations
     if os.path.isfile(path):
-        annotations = extract_annotations_from_file(path)
+        annotations = extract_annotations_from_file(path, default_annotations=default_annotations)
     else:
-        annotations = extract_annotations_from_directory(path, recursive)
+        annotations = extract_annotations_from_directory(path, recursive, default_annotations=default_annotations)
     
     # Build graph
     graph = ConceptGraph()
@@ -92,11 +118,18 @@ def export_command(args):
     output_dir = args.output_dir
     db_path = args.db
     
+    # Parse default annotations
+    default_annotations = {}
+    if hasattr(args, 'default_implementation_status') and args.default_implementation_status:
+        default_annotations["implementation_status"] = args.default_implementation_status
+    if hasattr(args, 'default_risk') and args.default_risk:
+        default_annotations["risk"] = args.default_risk
+    
     # Extract annotations
     if os.path.isfile(path):
-        annotations = extract_annotations_from_file(path)
+        annotations = extract_annotations_from_file(path, default_annotations=default_annotations)
     else:
-        annotations = extract_annotations_from_directory(path, recursive)
+        annotations = extract_annotations_from_directory(path, recursive, default_annotations=default_annotations)
     
     # Build graph
     graph = ConceptGraph()
@@ -168,6 +201,8 @@ def main():
     extract_parser.add_argument("path", help="File or directory to analyze")
     extract_parser.add_argument("--no-recursive", action="store_true", help="Don't scan directories recursively")
     extract_parser.add_argument("--output", help="Output file for annotations (JSON)")
+    extract_parser.add_argument("--default-implementation-status", help="Default implementation status for components without one")
+    extract_parser.add_argument("--default-risk", help="Default risk level for components without one")
     extract_parser.set_defaults(func=extract_command)
     
     # Build command
@@ -175,6 +210,8 @@ def main():
     build_parser.add_argument("path", help="File or directory to analyze")
     build_parser.add_argument("--no-recursive", action="store_true", help="Don't scan directories recursively")
     build_parser.add_argument("--output", help="Output file for graph (JSON)")
+    build_parser.add_argument("--default-implementation-status", help="Default implementation status for components without one")
+    build_parser.add_argument("--default-risk", help="Default risk level for components without one")
     build_parser.set_defaults(func=build_command)
     
     # Export command
@@ -183,6 +220,8 @@ def main():
     export_parser.add_argument("--no-recursive", action="store_true", help="Don't scan directories recursively")
     export_parser.add_argument("--output-dir", required=True, help="Output directory for JSONL files")
     export_parser.add_argument("--db", help="DuckDB database file for loading (optional)")
+    export_parser.add_argument("--default-implementation-status", help="Default implementation status for components without one")
+    export_parser.add_argument("--default-risk", help="Default risk level for components without one")
     export_parser.set_defaults(func=export_command)
     
     # Load command

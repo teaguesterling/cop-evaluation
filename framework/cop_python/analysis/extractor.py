@@ -376,14 +376,91 @@ class COPAnnotationVisitor(ast.NodeVisitor):
         # as COP annotations are applied as decorators
 
 
+def _apply_default_annotations(annotations: List[AnnotationInfo], 
+                              default_annotations: Dict[str, Any], 
+                              file_path: str) -> List[AnnotationInfo]:
+    """
+    Apply default annotations to components that don't have them.
+    
+    Args:
+        annotations: List of existing annotations
+        default_annotations: Dict mapping annotation types to default values
+        file_path: Path to the file being processed
+        
+    Returns:
+        List of annotations with defaults applied
+    """
+    # Group annotations by component
+    components: Dict[str, Dict[str, AnnotationInfo]] = {}
+    for anno in annotations:
+        if anno.component_name not in components:
+            components[anno.component_name] = {}
+        components[anno.component_name][anno.annotation_type] = anno
+    
+    # Create new annotations list starting with existing ones
+    new_annotations = list(annotations)
+    
+    # For each component, check if it needs default annotations
+    for component_name, component_annotations in components.items():
+        # Get the first annotation to extract component info
+        first_annotation = next(iter(component_annotations.values()))
+        
+        # Check each default annotation type
+        for annotation_type, default_value in default_annotations.items():
+            if annotation_type not in component_annotations:
+                # Create a default annotation
+                default_annotation = AnnotationInfo(
+                    annotation_type=annotation_type,
+                    component_name=component_name,
+                    component_type=first_annotation.component_type,
+                    file_path=file_path,
+                    line_number=0,  # No actual line number for default annotations
+                    value=default_value,
+                    metadata={"is_default": True},
+                    component_info=first_annotation.component_info,
+                    start_line=first_annotation.start_line,
+                    end_line=first_annotation.end_line,
+                    actual_start_line=first_annotation.actual_start_line,
+                    metrics=first_annotation.metrics
+                )
+                new_annotations.append(default_annotation)
+    
+    return new_annotations
+
+
+def _infer_component_type(component_name: str) -> str:
+    """
+    Infer the component type from its name.
+    
+    Args:
+        component_name: Fully qualified component name
+        
+    Returns:
+        Inferred component type (function, method, class, etc.)
+    """
+    parts = component_name.split('.')
+    
+    # If name has multiple parts, the last part might be a method
+    if len(parts) > 1:
+        if len(parts) >= 3:  # module.class.method likely
+            return "method"
+        else:
+            return "function"  # module.function likely
+    
+    # Single part - probably a class or module
+    return "unknown"
+
+
 def extract_annotations_from_file(file_path: str, 
-                               metrics_providers: List[MetricsProvider] = None) -> List[AnnotationInfo]:
+                               metrics_providers: List[MetricsProvider] = None,
+                               default_annotations: Dict[str, Any] = None) -> List[AnnotationInfo]:
     """
     Extract COP annotations from a Python file.
     
     Args:
         file_path: Path to the Python file
         metrics_providers: Optional list of metrics providers to use
+        default_annotations: Optional dict mapping annotation types to default values
         
     Returns:
         List of extracted annotations
@@ -403,11 +480,17 @@ def extract_annotations_from_file(file_path: str,
     visitor = COPAnnotationVisitor(file_path, source_code, metrics_providers)
     visitor.visit(tree)
     
-    return visitor.annotations
+    # Apply default annotations if specified
+    annotations = visitor.annotations
+    if default_annotations:
+        annotations = _apply_default_annotations(annotations, default_annotations, file_path)
+    
+    return annotations
 
 
 def extract_annotations_from_directory(directory: str, recursive: bool = True,
-                                  metrics_providers: List[MetricsProvider] = None) -> List[AnnotationInfo]:
+                                  metrics_providers: List[MetricsProvider] = None,
+                                  default_annotations: Dict[str, Any] = None) -> List[AnnotationInfo]:
     """
     Extract COP annotations from all Python files in a directory.
     
@@ -415,6 +498,7 @@ def extract_annotations_from_directory(directory: str, recursive: bool = True,
         directory: Directory to scan
         recursive: Whether to recursively scan subdirectories
         metrics_providers: Optional list of metrics providers to use
+        default_annotations: Optional dict mapping annotation types to default values
         
     Returns:
         List of extracted annotations
@@ -424,7 +508,7 @@ def extract_annotations_from_directory(directory: str, recursive: bool = True,
     # Get Python files
     pattern = "**/*.py" if recursive else "*.py"
     for file_path in Path(directory).glob(pattern):
-        file_annotations = extract_annotations_from_file(str(file_path), metrics_providers)
+        file_annotations = extract_annotations_from_file(str(file_path), metrics_providers, default_annotations)
         all_annotations.extend(file_annotations)
     
     return all_annotations
