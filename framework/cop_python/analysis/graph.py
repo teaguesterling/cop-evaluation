@@ -120,6 +120,40 @@ class AnnotationNode(Node):
         })
 
 
+class TestNode(Node):
+    """Node representing a test function or method."""
+    
+    def __init__(self, id: str, test_name: str, test_type: str, file_path: str,
+                 line_number: int, test_info: Dict[str, Any] = None,
+                 start_line: int = None, end_line: int = None, actual_start_line: int = None,
+                 metrics: Dict[str, Any] = None, properties: Dict[str, Any] = None):
+        super().__init__(id, NodeType.TEST, properties or {})
+        self.test_name = test_name
+        self.test_type = test_type
+        self.file_path = file_path
+        self.line_number = line_number
+        self.test_info = test_info or {}
+        
+        # Update properties
+        self.properties.update({
+            "test_name": test_name,
+            "test_type": test_type,
+            "file_path": file_path,
+            "line_number": line_number,
+            "test_info": self.test_info
+        })
+        
+        # Add line information if provided
+        if start_line is not None:
+            self.properties["start_line"] = start_line
+        if end_line is not None:
+            self.properties["end_line"] = end_line
+        if actual_start_line is not None:
+            self.properties["actual_start_line"] = actual_start_line
+        if metrics:
+            self.properties["metrics"] = metrics
+
+
 class Edge:
     """Base class for all edges in the concept graph."""
     
@@ -498,6 +532,156 @@ class ConceptGraph:
         
         return result
     
+    def add_test_relationship(self, test_relationship) -> None:
+        """
+        Add a test relationship to the graph.
+        
+        Args:
+            test_relationship: TestRelationship object containing test-component relationship
+        """
+        from .test_extractor import TestRelationship
+        
+        # Create test node
+        test_node_id = f"test:{test_relationship.test_name}"
+        test_node = TestNode(
+            id=test_node_id,
+            test_name=test_relationship.test_name,
+            test_type=test_relationship.test_type,
+            file_path=test_relationship.file_path,
+            line_number=test_relationship.line_number,
+            test_info=test_relationship.test_info,
+            start_line=test_relationship.start_line,
+            end_line=test_relationship.end_line,
+            actual_start_line=test_relationship.actual_start_line,
+            metrics=test_relationship.metrics
+        )
+        
+        self.add_node(test_node)
+        
+        # Create verification edge to target component
+        component_node_id = f"component:{test_relationship.target_component}"
+        
+        # Add properties about what is being tested
+        edge_properties = {
+            "test_type": test_relationship.test_type,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        if test_relationship.annotation_ref:
+            edge_properties["annotation_ref"] = test_relationship.annotation_ref
+            
+            # If testing a specific annotation, also create edge to that annotation
+            annotation_node_id = f"annotation:{test_relationship.target_component}:{test_relationship.annotation_ref['type']}"
+            
+            verified_by_annotation_edge = Edge(
+                source_id=annotation_node_id,
+                target_id=test_node_id,
+                edge_type=EdgeType.VERIFIED_BY,
+                properties={
+                    **edge_properties,
+                    "annotation_value": test_relationship.annotation_ref.get("value")
+                }
+            )
+            self.add_edge(verified_by_annotation_edge)
+        
+        # Create main verification edge from component to test
+        verified_by_edge = Edge(
+            source_id=component_node_id,
+            target_id=test_node_id,
+            edge_type=EdgeType.VERIFIED_BY,
+            properties=edge_properties
+        )
+        
+        self.add_edge(verified_by_edge)
+    
+    def build_from_test_relationships(self, test_relationships: List) -> None:
+        """
+        Build test nodes and verification edges from a list of test relationships.
+        
+        Args:
+            test_relationships: List of TestRelationship objects
+        """
+        for relationship in test_relationships:
+            self.add_test_relationship(relationship)
+    
+    def get_tests_for_component(self, component_id: str) -> List['TestNode']:
+        """
+        Get all tests that verify a specific component.
+        
+        Args:
+            component_id: ID of the component
+            
+        Returns:
+            List of test nodes that verify this component
+        """
+        test_nodes = []
+        edges = self.get_edges(source_id=component_id, edge_type=EdgeType.VERIFIED_BY)
+        
+        for edge in edges:
+            test_node = self.get_node(edge.target_id)
+            if test_node and test_node.node_type == NodeType.TEST:
+                test_nodes.append(test_node)
+        
+        return test_nodes
+    
+    def get_tests_for_annotation(self, component_id: str, annotation_type: str) -> List['TestNode']:
+        """
+        Get all tests that verify a specific annotation.
+        
+        Args:
+            component_id: ID of the component
+            annotation_type: Type of annotation (e.g., 'invariant', 'risk')
+            
+        Returns:
+            List of test nodes that verify this annotation
+        """
+        annotation_node_id = f"annotation:{component_id}:{annotation_type}"
+        test_nodes = []
+        edges = self.get_edges(source_id=annotation_node_id, edge_type=EdgeType.VERIFIED_BY)
+        
+        for edge in edges:
+            test_node = self.get_node(edge.target_id)
+            if test_node and test_node.node_type == NodeType.TEST:
+                test_nodes.append(test_node)
+        
+        return test_nodes
+    
+    def get_verification_status(self, component_id: str) -> Dict[str, Any]:
+        """
+        Get verification status for a component.
+        
+        Args:
+            component_id: ID of the component
+            
+        Returns:
+            Dictionary containing verification statistics
+        """
+        tests = self.get_tests_for_component(component_id)
+        
+        # Count tests by type
+        test_types = {}
+        annotation_coverage = {}
+        
+        for test in tests:
+            test_type = test.properties.get("test_type", "unknown")
+            test_types[test_type] = test_types.get(test_type, 0) + 1
+            
+            # Check annotation coverage - only count from component verification edges
+            verification_edges = self.get_edges(source_id=component_id, target_id=test.id, edge_type=EdgeType.VERIFIED_BY)
+            for edge in verification_edges:
+                if "annotation_ref" in edge.properties:
+                    annotation_ref = edge.properties["annotation_ref"]
+                    annotation_type = annotation_ref.get("type")
+                    if annotation_type:
+                        annotation_coverage[annotation_type] = annotation_coverage.get(annotation_type, 0) + 1
+        
+        return {
+            "total_tests": len(tests),
+            "test_types": test_types,
+            "annotation_coverage": annotation_coverage,
+            "has_tests": len(tests) > 0
+        }
+    
     def export_to_json(self, file_path: str) -> None:
         """
         Export the graph to a JSON file.
@@ -553,6 +737,20 @@ class ConceptGraph:
                     annotation_type=node_data.get("annotation_type", "unknown"),
                     value=node_data.get("value"),
                     metadata=node_data.get("metadata", {}),
+                    properties=node_data
+                )
+            elif node_type == NodeType.TEST:
+                node = TestNode(
+                    id=node_id,
+                    test_name=node_data.get("test_name", ""),
+                    test_type=node_data.get("test_type", "unit"),
+                    file_path=node_data.get("file_path", ""),
+                    line_number=node_data.get("line_number", 0),
+                    test_info=node_data.get("test_info", {}),
+                    start_line=node_data.get("start_line"),
+                    end_line=node_data.get("end_line"),
+                    actual_start_line=node_data.get("actual_start_line"),
+                    metrics=node_data.get("metrics"),
                     properties=node_data
                 )
             else:
