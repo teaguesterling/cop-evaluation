@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# COP Analysis Output
+data/
+*_output/
+test_output/
+test_*_output/
+graph_data/
+concept_graph/
+*.jsonl
+*.db
+
+# Backup and temporary files
+backup/
+../backup/
+tmp/
+temp/
+*.tmp
+*.bak
+debug_*.py
+test_debug_*.py
+test_core_debug*.py
+*_debug.py
+
+# Example and demo files (generated during development)
+test_annotated_module.py
+test_static_analysis.py
+test_default_annotations.py
+test_metrics.py
+extract_and_show_implementation.py
+example_code.py
+test_example.py
+
+# CLI executable (keep in repo but ignore any generated ones)
+# cop-analysis should be committed
